@@ -13,13 +13,19 @@ from .paths import hermes_home
 from .jsonl import append_jsonl, read_jsonl
 
 _configured_detail: str | None = None
+_configured_enabled: bool = True
 
 
-def configure(*, detail: Any = None) -> None:
-    """Apply the Hermes plugin ``receipt_detail`` setting."""
-    global _configured_detail
+def configure(*, enabled: Any = True, detail: Any = None) -> None:
+    """Apply receipt persistence settings."""
+    global _configured_detail, _configured_enabled
+    _configured_enabled = bool(enabled)
     value = str(detail if detail is not None else "hash").strip().lower()
     _configured_detail = value if value in {"hash", "sanitized"} else "hash"
+
+
+def enabled() -> bool:
+    return _configured_enabled
 
 
 def receipt_detail() -> str:
@@ -98,7 +104,8 @@ def write_receipt(*, contract: str, state: Any, result: dict[str, Any], model: s
     }
     if receipt_detail() == "sanitized":
         record["state"] = state
-    append_jsonl(receipt_path(), record)
+    if enabled():
+        append_jsonl(receipt_path(), record)
     return record
 
 

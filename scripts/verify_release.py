@@ -23,6 +23,8 @@ EXPECTED_TOOLS={
  "nerve_supervise_card","nerve_work_event","nerve_work_status","nerve_remote_delegate_task","nerve_remote_worker_status","nerve_remote_worker_result","nerve_remote_worker_cancel","nerve_remote_worker_control",
 }
 EXPECTED_HOOKS={"pre_tool_call","post_tool_call","pre_llm_call","transform_tool_result","pre_verify","post_api_request","api_request_error","post_llm_call","on_session_end"}
+PROFILE_FAT_CAT_TOOLS={"nerve_decide","nerve_rank","nerve_verify","nerve_assess","nerve_context_curate","nerve_context_rehydrate","nerve_stats","nerve_nervous_event","nerve_assistant","nerve_supervise_card","nerve_work_event","nerve_work_status"}
+PROFILE_LEAN_TOOLS={"nerve_decide","nerve_rank","nerve_verify","nerve_assess","nerve_stats","nerve_nervous_event","nerve_supervise_card","nerve_work_event","nerve_work_status"}
 
 class Ctx:
  def __init__(self,td):self.tools=[];self.hooks=[];self.engine=None;self.td=td
@@ -76,6 +78,6 @@ def main():
  from hermes_nerve.work import runtime as work_runtime
  work_runtime.configure(enabled=True, completion_controller_attempts=3)
  assert work_runtime.settings()["completion_controller_attempts"]==3
- print(f"PASS version={EXPECTED} tools={len(EXPECTED_TOOLS)} hook_names={len(EXPECTED_HOOKS)} catalog_version={catalog_version()} single_authority=PASS controller_completion=PASS reflex_laya=PASS reflex_openjev=PASS")
+ print(f"PASS version={EXPECTED} legacy_tools={len(EXPECTED_TOOLS)} fat_cat_tools={len(PROFILE_FAT_CAT_TOOLS)} lean_tools={len(PROFILE_LEAN_TOOLS)} hook_names={len(EXPECTED_HOOKS)} catalog_version={catalog_version()} profiles=PASS single_authority=PASS controller_completion=PASS reflex_laya=PASS reflex_openjev=PASS")
  return 0
 if __name__=="__main__":raise SystemExit(main())

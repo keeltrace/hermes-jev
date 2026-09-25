@@ -14,7 +14,6 @@ provides_tools:
   - nerve_context_rehydrate
   - nerve_stats
   - nerve_nervous_event
-  - nerve_assistant
   - nerve_supervise_card
   - nerve_work_event
   - nerve_work_status

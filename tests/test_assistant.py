@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, tempfile, unittest
+import json, tempfile, unittest, threading, time
 from pathlib import Path
 from unittest.mock import patch
 from hermes_nerve import assistant, tools
@@ -7,12 +7,12 @@ from hermes_nerve.client import JevResponse
 from hermes_nerve.engine import DecisionEngine
 
 class Provider:
-    def __init__(self, value="PASS", confidence=.95): self.value=value; self.confidence=confidence; self.calls=0
+    def __init__(self, value="PASS", confidence=.95, live=True): self.value=value; self.confidence=confidence; self.calls=0; self.live=live
     def system_one(self, *, state, questions, model=None):
         self.calls += 1
         labels=list(questions["decision"]["criteria"])
         probs={x:(self.confidence if x==self.value else (1-self.confidence)/(len(labels)-1)) for x in labels}
-        return JevResponse(model="test", answers={"decision":{"choice":self.value,"confidence":self.confidence,"probabilities":probs}}, usage={}, latency_ms=1)
+        return JevResponse(model="test", answers={"decision":{"choice":self.value,"confidence":self.confidence,"probabilities":probs}}, usage={}, latency_ms=1, live_provider_call=self.live)
 
 class AssistantTests(unittest.TestCase):
     def setUp(self):
@@ -42,6 +42,37 @@ class AssistantTests(unittest.TestCase):
         p=Provider("NUDGE",.90); assistant._engine_factory=lambda: DecisionEngine(p)
         block=assistant.pre_llm_call(user_message="what next?")
         self.assertIn("REFLEX ACCOUNTABILITY REVIEW", block); self.assertIn("NUDGE", block); self.assertEqual(p.calls,1)
+
+    def test_install_initialization_cannot_erase_concurrent_board_writer(self):
+        # Hold the same OS-backed lock install must acquire. Install should wait,
+        # then observe the board created by the concurrent writer instead of overwriting it.
+        finished=[]
+        with assistant._lock("board"):
+            t=threading.Thread(target=lambda: (assistant.install(), finished.append(True)))
+            t.start(); time.sleep(.05); self.assertTrue(t.is_alive())
+            assistant._write(assistant._board_path(), {"schema":"hermes-nerve-assistant/v1","revision":1,"loops":[{"id":"loop-race","title":"preserve me","state":"open"}]})
+        t.join(2); self.assertFalse(t.is_alive()); self.assertTrue(finished)
+        self.assertEqual([x["id"] for x in assistant.loops()], ["loop-race"])
+
+    def test_older_pass_cannot_overwrite_newer_review(self):
+        assistant.install(); loop=assistant.add_loop(title="Race review",definition_of_done="evidence")
+        newer=Provider("REPLAN",.94)
+        class OlderPass(Provider):
+            def system_one(self, *, state, questions, model=None):
+                assistant._engine_factory=lambda: DecisionEngine(newer)
+                nested=assistant.review_completion(loop["id"], {"newer":"review"})
+                self.assert_nested=nested
+                return super().system_one(state=state,questions=questions,model=model)
+        older=OlderPass("PASS",.97); assistant._engine_factory=lambda: DecisionEngine(older)
+        result=assistant.review_completion(loop["id"], {"older":"review"})
+        self.assertTrue(result["stale"]); self.assertFalse(result["closed"])
+        current=assistant.loops()[0]; self.assertEqual(current["state"],"open"); self.assertEqual(current["review"]["value"],"REPLAN")
+
+    def test_public_completion_provenance_follows_local_reflex_result(self):
+        assistant.install(); loop=assistant.add_loop(title="Local Reflex")
+        p=Provider("PASS",.96,live=False); assistant._engine_factory=lambda: DecisionEngine(p)
+        payload=json.loads(tools.nerve_assistant({"action":"complete","loop_id":loop["id"],"evidence":{"ok":True}}))
+        self.assertTrue(payload["assistant"]["closed"]); self.assertFalse(payload["execution"]["live_provider_call"])
 
     def test_stale_completion_review_cannot_overwrite_concurrent_change(self):
         assistant.install(); loop=assistant.add_loop(title="Ship change",definition_of_done="old requirement")

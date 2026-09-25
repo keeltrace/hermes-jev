@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-import time
 import uuid
 from contextlib import contextmanager
 import hashlib
@@ -78,29 +77,34 @@ def _audit_path() -> Path: return data_dir() / "audits.jsonl"
 
 
 @contextmanager
-def _lock(name: str, timeout: float = 5.0):
+def _lock(name: str):
+    """Hold an OS-backed advisory lock for one assistant store.
+
+    The lock is tied to an open file descriptor, so process exit/crash releases
+    it automatically. No age-based lock stealing is allowed.
+    """
     root = data_dir(); root.mkdir(parents=True, exist_ok=True)
-    lockdir = root / f".{name}.lock"
-    deadline = time.monotonic() + timeout
-    while True:
-        try:
-            lockdir.mkdir()
-            break
-        except FileExistsError:
-            try:
-                stale = time.time() - lockdir.stat().st_mtime > 30.0
-                if stale:
-                    lockdir.rmdir(); continue
-            except (OSError, FileNotFoundError):
-                continue
-            if time.monotonic() >= deadline:
-                raise TimeoutError(f"assistant {name} store is busy")
-            time.sleep(0.02)
+    path = root / f".{name}.lock"
+    fh = open(path, "a+b")
     try:
+        if os.name == "nt":
+            import msvcrt
+            fh.seek(0); fh.write(b"0"); fh.flush(); fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
         yield
     finally:
-        try: lockdir.rmdir()
-        except OSError: pass
+        try:
+            if os.name == "nt":
+                import msvcrt
+                fh.seek(0); msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        finally:
+            fh.close()
 
 
 def _board_doc() -> dict[str, Any]:
@@ -122,7 +126,7 @@ def _mutate_board(mutator: Callable[[list[dict[str, Any]]], Any]) -> Any:
 
 
 def _loop_fingerprint(item: dict[str, Any]) -> str:
-    keys = ("id","title","state","next","owner","depends_on","trigger","deadline","definition_of_done","created_at")
+    keys = ("id","title","state","next","owner","depends_on","trigger","deadline","definition_of_done","created_at","updated_at","review")
     payload = {k: item.get(k) for k in keys}
     raw = json.dumps(payload, sort_keys=True, separators=(",",":"), default=str).encode()
     return hashlib.sha256(raw).hexdigest()
@@ -163,20 +167,23 @@ def install() -> dict[str, Any]:
     settings.update({"schema": _SCHEMA, "enabled": True, "installed_at": settings.get("installed_at") or _now(), "updated_at": _now()})
     _write(_settings_path(), settings)
     _runtime_enabled_override = True
-    if not _rules_path().exists():
-        seeded = [
-            "Do not mark an open loop complete from a claim alone; require evidence and Nerve completion review.",
-            "Resolve context gaps before asking. Ask when a remaining gap is load-bearing or an action is irreversible.",
-            "Verify current times, dates, schedules, prices, availability, addresses, contacts, policies, and action-driving facts before relying on them.",
-            "Track open loops quietly. Surface them when a trigger fires, new information arrives, or a decision is actually needed; do not nag.",
-            "Sending, spending, sharing access, deleting, booking, and irreversible submissions require explicit user approval unless an exact standing grant covers them.",
-            "Silence is a valid outcome: suppress status/noise when the user does not need to act or know.",
-        ]
-        _write(_rules_path(), {"schema": _SCHEMA, "rules": [
-            {"id": f"system-{i+1}", "text": text, "created_at": _now(), "source": "assistant-default"}
-            for i, text in enumerate(seeded)
-        ]})
-    if not _board_path().exists(): _write(_board_path(), {"schema": _SCHEMA, "revision": 0, "loops": []})
+    with _lock("rules"):
+        if not _rules_path().exists():
+            seeded = [
+                "Do not mark an open loop complete from a claim alone; require evidence and Nerve completion review.",
+                "Resolve context gaps before asking. Ask when a remaining gap is load-bearing or an action is irreversible.",
+                "Verify current times, dates, schedules, prices, availability, addresses, contacts, policies, and action-driving facts before relying on them.",
+                "Track open loops quietly. Surface them when a trigger fires, new information arrives, or a decision is actually needed; do not nag.",
+                "Sending, spending, sharing access, deleting, booking, and irreversible submissions require explicit user approval unless an exact standing grant covers them.",
+                "Silence is a valid outcome: suppress status/noise when the user does not need to act or know.",
+            ]
+            _write(_rules_path(), {"schema": _SCHEMA, "rules": [
+                {"id": f"system-{i+1}", "text": text, "created_at": _now(), "source": "assistant-default"}
+                for i, text in enumerate(seeded)
+            ]})
+    with _lock("board"):
+        if not _board_path().exists():
+            _write(_board_path(), {"schema": _SCHEMA, "revision": 0, "loops": []})
     return status()
 
 
@@ -294,14 +301,15 @@ def review_completion(loop_id: str, evidence: Any, *, force: bool = False) -> di
         doc = _board_doc(); items = [dict(x) for x in doc["loops"] if isinstance(x, dict)]
         idx, current = _find(items, loop_id)
         if _loop_fingerprint(current) != snapshot_fp:
-            return {"loop":dict(current),"closed":False,"stale":True,"provider_call":True,"review":review,
+            return {"loop":dict(current),"closed":False,"stale":True,"provider_call":bool(result.live_provider_call),"review":review,
                     "reason":"loop changed while completion review was in flight; review was not applied"}
         close = result.value == "PASS" and result.confidence >= _config_review_min_confidence
         current["review"] = review; current["updated_at"] = _now()
         if close: current["state"] = "done"
         elif result.value == "ESCALATE": current["state"] = "blocked"
         items[idx] = current; doc["loops"] = items; doc["revision"] += 1; _write(_board_path(), doc)
-        return {"loop":dict(current),"closed":close,"review":review,"minimum_confidence":_config_review_min_confidence,"provider_call":True}
+        return {"loop":dict(current),"closed":close,"review":review,"minimum_confidence":_config_review_min_confidence,
+                "provider_call":bool(result.live_provider_call)}
 
 
 def active_loops() -> list[dict[str, Any]]:

@@ -73,6 +73,12 @@ class Patch0211Tests(unittest.TestCase):
         self.assertEqual(by_type["score"]["properties"]["criteria"]["minItems"], 2)
         self.assertIn("criteria", by_type["score"]["required"])
         self.assertNotIn("criteria", by_type["noul"]["required"])
+        for qtype in ("choice", "score", "noul"):
+            self.assertIn("instructions", by_type[qtype]["required"])
+        noul_criteria = by_type["noul"]["properties"]["criteria"]
+        self.assertEqual(set(noul_criteria["properties"]), {"true", "false"})
+        self.assertEqual(set(noul_criteria["required"]), {"true", "false"})
+        self.assertFalse(noul_criteria["additionalProperties"])
 
     def test_valid_choice_reaches_provider_once_and_invalid_choice_stays_local(self):
         provider = CountingProvider()
@@ -95,9 +101,122 @@ class Patch0211Tests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "at least two criteria labels"):
                 runtime.assess(
                     state={},
-                    questions={"is_disposable": {"type": "choice", "criteria": {"SAFE": "only one"}}},
+                    questions={"is_disposable": {"type": "choice", "instructions": "Classify candidate.", "criteria": {"SAFE": "only one"}}},
                 )
             self.assertEqual(provider.calls, 1, "invalid input must not call the provider")
+
+    def test_assess_rejects_provider_invalid_shapes_locally(self):
+        provider = CountingProvider()
+        runtime = engine.DecisionEngine(provider)
+
+        with self.assertRaisesRegex(ValueError, "question 'missing' requires instructions"):
+            runtime.assess(
+                state={},
+                questions={"missing": {"type": "noul"}},
+            )
+
+        with self.assertRaisesRegex(ValueError, "noul question 'alias' criteria must contain exactly 'true' and 'false' keys"):
+            runtime.assess(
+                state={},
+                questions={
+                    "alias": {
+                        "type": "noul",
+                        "instructions": "Is this true?",
+                        "criteria": {"yes": "yes", "no": "no"},
+                    }
+                },
+            )
+
+        with self.assertRaisesRegex(ValueError, "noul question 'null_criteria' criteria must be an object when provided"):
+            runtime.assess(
+                state={},
+                questions={
+                    "null_criteria": {
+                        "type": "noul",
+                        "instructions": "Is this true?",
+                        "criteria": None,
+                    }
+                },
+            )
+
+        with self.assertRaisesRegex(ValueError, "noul question 'bad_value' criteria.true must be JSON-compatible text/context"):
+            runtime.assess(
+                state={},
+                questions={
+                    "bad_value": {
+                        "type": "noul",
+                        "instructions": "Is this true?",
+                        "criteria": {"true": None, "false": "no"},
+                    }
+                },
+            )
+
+        self.assertEqual(provider.calls, 0, "provider-invalid questions must fail before network/provider work")
+
+    def test_deferred_assess_public_tool_rejects_invalid_and_accepts_valid_16_batch(self):
+        provider = CountingProvider()
+        runtime = engine.DecisionEngine(provider)
+        questions = {
+            f"q{i:02d}": {
+                "type": "noul",
+                "instructions": f"Evaluate item {i}.",
+                "criteria": {"true": "yes", "false": "no"},
+            }
+            for i in range(16)
+        }
+        original = tools._engine_factory
+        tools._engine_factory = lambda: runtime
+        try:
+            missing = json.loads(tools.nerve_assess(
+                {"state": {}, "questions": {"missing": {"type": "noul"}}}
+            ))
+            self.assertFalse(missing["ok"])
+            self.assertEqual(missing["error"], "question 'missing' requires instructions")
+            self.assertEqual(provider.calls, 0)
+
+            aliases = json.loads(tools.nerve_assess({
+                "state": {},
+                "questions": {
+                    "alias": {
+                        "type": "noul",
+                        "instructions": "Is this true?",
+                        "criteria": {"yes": "yes", "no": "no"},
+                    }
+                },
+            }))
+            self.assertFalse(aliases["ok"])
+            self.assertIn("exactly 'true' and 'false' keys", aliases["error"])
+            self.assertEqual(provider.calls, 0)
+
+            null_criteria = json.loads(tools.nerve_assess({
+                "state": {},
+                "questions": {
+                    "null_criteria": {
+                        "type": "noul",
+                        "instructions": "Is this true?",
+                        "criteria": None,
+                    }
+                },
+            }))
+            self.assertFalse(null_criteria["ok"])
+            self.assertIn("criteria must be an object when provided", null_criteria["error"])
+            self.assertEqual(provider.calls, 0)
+
+            with tempfile.TemporaryDirectory() as td, patch.dict(
+                os.environ, {"HERMES_NERVE_RECEIPTS": str(Path(td) / "r.jsonl")}, clear=False
+            ):
+                result = json.loads(tools.nerve_assess({
+                    "state": {"batch": "synthetic"},
+                    "questions": questions,
+                    "contract": "issue-8/valid-16/v1",
+                }))
+                self.assertTrue(result["ok"])
+                self.assertEqual(provider.calls, 1)
+                self.assertEqual(len(result["answers"]), 16)
+                self.assertTrue(result["receipt_id"].startswith("jevrec-"))
+                self.assertTrue((Path(td) / "r.jsonl").exists())
+        finally:
+            tools._engine_factory = original
 
     def test_jev_internal_failure_is_recorded_and_never_remotely_supervised(self):
         NoopNervousEngine.reset()
@@ -138,7 +257,7 @@ class Patch0211Tests(unittest.TestCase):
         }, clear=False):
             result = engine.DecisionEngine(direct_provider).assess(
                 state={"candidate": "cache.tmp"},
-                questions={"safe": {"type": "choice", "criteria": {"SAFE": "yes", "KEEP": "no"}}},
+                questions={"safe": {"type": "choice", "instructions": "Classify candidate.", "criteria": {"SAFE": "yes", "KEEP": "no"}}},
             )
             self.assertEqual(direct_provider.calls, 1)
             system = nervous.NervousSystem(engine_factory=NoopNervousEngine)
@@ -159,7 +278,7 @@ class Patch0211Tests(unittest.TestCase):
             results = [
                 runtime.decide(state={"n": 1}, instructions="choose", choices=["SAFE", "KEEP"]).as_dict(),
                 runtime.rank(state={"n": 2}, instructions="rank", items={"SAFE": "safe", "KEEP": "keep"}),
-                runtime.assess(state={"n": 3}, questions={"q": {"type": "choice", "criteria": {"SAFE": "safe", "KEEP": "keep"}}}),
+                runtime.assess(state={"n": 3}, questions={"q": {"type": "choice", "instructions": "choose", "criteria": {"SAFE": "safe", "KEEP": "keep"}}}),
                 runtime.verify(state={"n": 4}, instructions="verify").as_dict(),
             ]
             self.assertEqual(provider.calls, 4)

@@ -43,6 +43,11 @@ class RegistrationTests(unittest.TestCase):
             by_type={x["properties"]["type"]["enum"][0]:x for x in assess}
             self.assertEqual(by_type["choice"]["properties"]["criteria"]["minProperties"],2)
             self.assertEqual(by_type["score"]["properties"]["criteria"]["minItems"],2)
+            for qtype in ("choice","score","noul"):
+                self.assertIn("instructions",by_type[qtype]["required"])
+            noul_criteria=by_type["noul"]["properties"]["criteria"]
+            self.assertEqual(set(noul_criteria["required"]),{"true","false"})
+            self.assertFalse(noul_criteria["additionalProperties"])
 
 
 if __name__=="__main__":unittest.main()

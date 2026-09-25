@@ -127,6 +127,18 @@ class Patch0211Tests(unittest.TestCase):
                 },
             )
 
+        with self.assertRaisesRegex(ValueError, "noul question 'null_criteria' criteria must be an object when provided"):
+            runtime.assess(
+                state={},
+                questions={
+                    "null_criteria": {
+                        "type": "noul",
+                        "instructions": "Is this true?",
+                        "criteria": None,
+                    }
+                },
+            )
+
         with self.assertRaisesRegex(ValueError, "noul question 'bad_value' criteria.true must be JSON-compatible text/context"):
             runtime.assess(
                 state={},
@@ -174,6 +186,20 @@ class Patch0211Tests(unittest.TestCase):
             }))
             self.assertFalse(aliases["ok"])
             self.assertIn("exactly 'true' and 'false' keys", aliases["error"])
+            self.assertEqual(provider.calls, 0)
+
+            null_criteria = json.loads(tools.nerve_assess({
+                "state": {},
+                "questions": {
+                    "null_criteria": {
+                        "type": "noul",
+                        "instructions": "Is this true?",
+                        "criteria": None,
+                    }
+                },
+            }))
+            self.assertFalse(null_criteria["ok"])
+            self.assertIn("criteria must be an object when provided", null_criteria["error"])
             self.assertEqual(provider.calls, 0)
 
             with tempfile.TemporaryDirectory() as td, patch.dict(

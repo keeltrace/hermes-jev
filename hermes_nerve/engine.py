@@ -104,7 +104,7 @@ class DecisionEngine:
             elif qtype == "score":
                 if not isinstance(criteria, (list, tuple)) or len(criteria) < 2:
                     raise ValueError(f"score question {name!r} requires an ordered criteria list with at least two entries")
-            elif criteria is not None:
+            elif "criteria" in q:
                 if not isinstance(criteria, dict):
                     raise ValueError(f"noul question {name!r} criteria must be an object when provided")
                 if set(criteria) != {"true", "false"}:

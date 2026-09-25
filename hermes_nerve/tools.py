@@ -6,7 +6,7 @@ import json
 
 from .context import curate_context
 from .engine import DecisionEngine
-from . import gate, ledger, lifecycle, receipts, nervous
+from . import assistant, gate, ledger, lifecycle, receipts, nervous
 from .provenance import execution_provenance, result_provenance
 
 _engine_factory = DecisionEngine
@@ -151,6 +151,37 @@ def nerve_context_rehydrate(args: dict, **kwargs) -> str:
     except Exception as exc:
         return _error(exc)
 
+
+
+def nerve_assistant(args: dict, **kwargs) -> str:
+    try:
+        action = str(args.get("action") or "status").strip().lower()
+        if action == "install": result = assistant.install()
+        elif action == "disable": result = assistant.disable()
+        elif action == "status": result = assistant.status()
+        elif action == "add_rule": result = assistant.add_rule(str(args.get("text") or ""))
+        elif action == "remove_rule": result = assistant.remove_rule(str(args.get("rule_id") or ""))
+        elif action == "add_loop":
+            result = assistant.add_loop(
+                title=str(args.get("title") or ""), next_move=str(args.get("next") or ""),
+                owner=str(args.get("owner") or "agent"), depends_on=args.get("depends_on"),
+                trigger=args.get("trigger"), deadline=str(args.get("deadline") or ""),
+                definition_of_done=str(args.get("definition_of_done") or ""),
+            )
+        elif action == "update_loop":
+            result = assistant.update_loop(str(args.get("loop_id") or ""), **{
+                k: args.get(k) for k in ("title","state","next","owner","depends_on","trigger","deadline","definition_of_done") if k in args
+            })
+        elif action == "complete":
+            result = assistant.review_completion(str(args.get("loop_id") or ""), args.get("evidence"))
+        elif action == "drop_loop":
+            result = assistant.update_loop(str(args.get("loop_id") or ""), state="dropped")
+        else: raise ValueError(f"unsupported assistant action: {action}")
+        provider_call = bool(result.get("provider_call")) if action == "complete" and isinstance(result, dict) else False
+        return _ok({"contract":"assistant-accountability/v1","action":action,"assistant":result,
+                    "execution":execution_provenance(live_provider_call=provider_call, transport="nerve-assistant")})
+    except Exception as exc:
+        return _error(exc)
 
 
 def nerve_nervous_event(args: dict, **kwargs) -> str:

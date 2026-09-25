@@ -14,6 +14,7 @@ provides_tools:
   - nerve_context_rehydrate
   - nerve_stats
   - nerve_nervous_event
+  - nerve_assistant
   - nerve_supervise_card
   - nerve_work_event
   - nerve_work_status
@@ -60,6 +61,13 @@ config_schema:
   nervous_local_learning: {type: bool, default: true}
   nervous_local_learning_min_samples: {type: int, default: 8}
   nervous_repeated_failure_local_replan_at: {type: int, default: 3}
+  assistant_enabled: {type: bool, default: false, description: "Opt-in persistent personal-assistant accountability loop. Can also be enabled at runtime with nerve_assistant action=install."}
+  assistant_data_dir: {type: str, default: "", description: "Optional profile-local assistant state directory override."}
+  assistant_review_completion: {type: bool, default: true, description: "Require configured Reflex backend review before an open loop is marked done."}
+  assistant_review_min_confidence: {type: float, default: 0.75, description: "Minimum PASS confidence required to close an assistant loop."}
+  assistant_prompt_max_chars: {type: int, default: 4000, description: "Maximum pinned rules/open-loop block injected into a normal Hermes turn."}
+  assistant_open_loop_audit: {type: bool, default: true, description: "When Assistant mode is enabled and loops are active, ask the configured Reflex backend for bounded CONTINUE/NUDGE/REPLAN/ESCALATE accountability advice each turn."}
+  assistant_audit_min_confidence: {type: float, default: 0.70, description: "Minimum Reflex confidence before non-CONTINUE accountability advice is injected for the orchestrator."}
   context_ledger_enabled: {type: bool, default: true}
   context_ledger_detail: {type: str, default: "sanitized"}
   context_preview_chars: {type: int, default: 1200}

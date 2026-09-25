@@ -170,3 +170,29 @@ The dev5 foundation started from the last publicly verifiable Nerve development 
 - current Hermes Kanban lifecycle APIs, while keeping Kanban as the sole canonical work-state authority.
 
 See `docs/DEV_0.2.2.md` and `SOURCE_PROVENANCE.md`.
+
+## Optional Assistant Accountability mode
+
+Nerve can also run as a persistent personal-assistant accountability layer for power users. It is **off by default**. After Nerve is installed, ask Hermes to **“Nerve, install assistant mode”**; Hermes calls `nerve_assistant` with `action=install`, creates profile-local state under `~/.hermes/nerve/assistant/`, seeds a small pinned accountability rules block, and enables the mode without installing another package.
+
+Assistant mode adds a durable day/open-loop board outside chat history. Each loop can carry a state, next move, owner, dependencies, trigger, deadline, and Definition of Done. Standing rules and active loops are injected into ordinary Hermes turns so they survive new sessions and context compression. Kanban workers remain headless.
+
+With active loops, the configured Reflex backend (Jev, Laya, OpenJev, or shadow) can perform a bounded `CONTINUE / NUDGE / REPLAN / ESCALATE` accountability audit each turn. This is supervisory advice to the main Hermes orchestrator, not independent authority, and **can increase token/provider usage**. A loop cannot be marked `done` through the generic update path while completion review is enabled: `nerve_assistant action=complete` requires evidence and a Reflex `PASS` above the configured confidence floor. `dropped` remains an explicit separate terminal state.
+
+If the selected Reflex backend is hosted, these audits send a redacted/bounded copy of the active-loop state plus a bounded current-turn excerpt to that configured provider. Use Laya/OpenJev locally or disable `assistant_open_loop_audit` if that data/usage tradeoff is not acceptable.
+
+Useful actions:
+
+```text
+nerve_assistant action=install
+nerve_assistant action=add_rule text="..."
+nerve_assistant action=add_loop title="..." next="..." definition_of_done="..."
+nerve_assistant action=status
+nerve_assistant action=complete loop_id="..." evidence={...}
+nerve_assistant action=disable
+```
+
+Relevant settings (all profile-local): `assistant_enabled` (default `false`), `assistant_review_completion` (default `true`), `assistant_review_min_confidence` (default `0.75`), `assistant_open_loop_audit` (default `true` once Assistant mode is enabled), `assistant_audit_min_confidence` (default `0.70`), `assistant_prompt_max_chars` (default `4000`), and optional `assistant_data_dir`.
+
+This is deliberately a power-user feature. It does not pretend to be a zero-cost consumer assistant and it does not bypass Hermes approval boundaries for consequential actions.
+

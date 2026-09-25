@@ -8,7 +8,7 @@ from pathlib import Path
 try:
     # Hermes plugin loader imports the plugin as a package. Relative imports are
     # required there because the plugin root itself is not added to sys.path.
-    from .hermes_nerve import client, context, gate, ledger, nervous, receipts, schemas, tools
+    from .hermes_nerve import assistant, client, context, gate, ledger, nervous, receipts, schemas, tools
     from .hermes_nerve import reflex
     from .hermes_nerve.context_engine import NerveContextEngine
     from .hermes_nerve.provenance import VERSION
@@ -22,7 +22,7 @@ except ImportError:
     # Pytest and direct offline verification may import this file as bare
     # ``__init__``. Preserve that source-tree workflow without regressing the
     # real Hermes package-loader fix above.
-    from hermes_nerve import client, context, gate, ledger, nervous, receipts, schemas, tools
+    from hermes_nerve import assistant, client, context, gate, ledger, nervous, receipts, schemas, tools
     from hermes_nerve import reflex
     from hermes_nerve.context_engine import NerveContextEngine
     from hermes_nerve.provenance import VERSION
@@ -88,6 +88,15 @@ def register(ctx):
         local_learning=ctx.get_config("nervous_local_learning", True),
         local_learning_min_samples=ctx.get_config("nervous_local_learning_min_samples", 8),
         repeated_failure_local_replan_at=ctx.get_config("nervous_repeated_failure_local_replan_at", 3),
+    )
+    assistant.configure(
+        enabled=ctx.get_config("assistant_enabled", False),
+        data_dir=ctx.get_config("assistant_data_dir", ""),
+        review_completion=ctx.get_config("assistant_review_completion", True),
+        review_min_confidence=ctx.get_config("assistant_review_min_confidence", 0.75),
+        prompt_max_chars=ctx.get_config("assistant_prompt_max_chars", 4000),
+        audit_open_loops=ctx.get_config("assistant_open_loop_audit", True),
+        audit_min_confidence=ctx.get_config("assistant_audit_min_confidence", 0.70),
     )
     context.configure(
         preview_chars=ctx.get_config("context_preview_chars", 1200),
@@ -171,6 +180,7 @@ def register(ctx):
         ("nerve_context_rehydrate", schemas.NERVE_CONTEXT_REHYDRATE, tools.nerve_context_rehydrate),
         ("nerve_stats", schemas.NERVE_STATS, tools.nerve_stats),
         ("nerve_nervous_event", schemas.NERVE_NERVOUS_EVENT, tools.nerve_nervous_event),
+        ("nerve_assistant", schemas.NERVE_ASSISTANT, tools.nerve_assistant),
         ("nerve_supervise_card", schemas.NERVE_SUPERVISE_CARD, work_tools.nerve_supervise_card),
         ("nerve_work_event", schemas.NERVE_WORK_EVENT, work_tools.nerve_work_event),
         ("nerve_work_status", schemas.NERVE_WORK_STATUS, work_tools.nerve_work_status),
@@ -203,7 +213,9 @@ def register(ctx):
         if headless_worker:
             return work_result
         nervous_result = nervous.pre_llm_call(**kwargs)
-        return work_result if work_result is not None else nervous_result
+        assistant_result = assistant.pre_llm_call(**kwargs)
+        hints = [str(x).strip() for x in (work_result, nervous_result, assistant_result) if x is not None and str(x).strip()]
+        return "\n\n".join(hints) if hints else None
 
     def _transform_tool_result(**kwargs):
         work_result = work_hooks.transform_tool_result(**kwargs)

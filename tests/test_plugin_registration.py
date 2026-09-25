@@ -33,8 +33,8 @@ class RegistrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             mod=self.load_plugin();ctx=FakeCtx(Path(td));mod.register(ctx)
             self.assertEqual(VERSION,"0.2.3")
-            self.assertEqual(len(ctx.tools),16)
-            for name in ("nerve_decide","nerve_nervous_event","nerve_supervise_card","nerve_work_event","nerve_remote_delegate_task","nerve_remote_worker_control"):
+            self.assertEqual(len(ctx.tools),17)
+            for name in ("nerve_decide","nerve_nervous_event","nerve_assistant","nerve_supervise_card","nerve_work_event","nerve_remote_delegate_task","nerve_remote_worker_control"):
                 self.assertIn(name,ctx.tools)
             names={n for n,_ in ctx.hooks}
             self.assertEqual(names,{"pre_tool_call","post_tool_call","pre_llm_call","transform_tool_result","pre_verify","post_api_request","api_request_error","post_llm_call","on_session_end"})

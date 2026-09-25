@@ -36,7 +36,7 @@ class RegistrationTests(unittest.TestCase):
         mod=importlib.util.module_from_spec(spec);sys.modules[spec.name]=mod;spec.loader.exec_module(mod);return mod
 
     def test_legacy_registration_is_v023_contract(self):
-        with tempfile.TemporaryDirectory() as td, patch.dict(os.environ,{"HERMES_HOME":td},clear=False):
+        with tempfile.TemporaryDirectory() as td, patch.dict(os.environ,{"HERMES_HOME":td,"HERMES_KANBAN_TASK":"","HERMES_KANBAN_TASK_ID":""},clear=False):
             mod=self.load_plugin();ctx=FakeCtx(Path(td))
             with patch.object(mod.work_runtime,"configure",wraps=mod.work_runtime.configure) as work_config:
                 mod.register(ctx)

@@ -21,7 +21,7 @@ def load_plugin():
 class ModuleAbsenceTests(unittest.TestCase):
     def register(self, profile, extra=None):
         td=tempfile.TemporaryDirectory(); self.addCleanup(td.cleanup)
-        env=patch.dict(os.environ,{"HERMES_HOME":td.name},clear=False); env.start(); self.addCleanup(env.stop)
+        env=patch.dict(os.environ,{"HERMES_HOME":td.name,"HERMES_KANBAN_TASK":"","HERMES_KANBAN_TASK_ID":""},clear=False); env.start(); self.addCleanup(env.stop)
         mod=load_plugin(); values={"nerve_profile":profile}; values.update(extra or {}); ctx=Ctx(Path(td.name),values); mod.register(ctx); return mod,ctx
 
     def test_lean_removes_qol_surfaces_and_hooks(self):
@@ -55,3 +55,17 @@ class ModuleAbsenceTests(unittest.TestCase):
     def test_explicit_module_override_wins(self):
         _,ctx=self.register("lean",{"nerve_modules":{"context_governor":True}})
         self.assertIn("nerve_context_curate",ctx.tools); self.assertIsNotNone(ctx.engine)
+
+    def test_profile_shadow_backend_requires_shadow_testing_but_legacy_honors_existing_setting(self):
+        # New profiles make shadow testing an explicit module cost. Legacy keeps the v0.2.3 setting verbatim.
+        td=tempfile.TemporaryDirectory(); self.addCleanup(td.cleanup)
+        env=patch.dict(os.environ,{"HERMES_HOME":td.name,"HERMES_KANBAN_TASK":"","HERMES_KANBAN_TASK_ID":""},clear=False); env.start(); self.addCleanup(env.stop)
+        mod=load_plugin()
+        legacy=Ctx(Path(td.name),{"reflex_backend":"shadow"})
+        with patch.object(mod.reflex,"configure",wraps=mod.reflex.configure) as conf:
+            mod.register(legacy)
+        self.assertEqual(conf.call_args.kwargs["backend"],"shadow")
+        lean=Ctx(Path(td.name),{"nerve_profile":"lean","reflex_backend":"shadow"})
+        with patch.object(mod.reflex,"configure",wraps=mod.reflex.configure) as conf:
+            mod.register(lean)
+        self.assertEqual(conf.call_args.kwargs["backend"],"jev")

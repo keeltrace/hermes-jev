@@ -107,3 +107,11 @@ After installation, run the printed Hermes Plugin Doctor command. Nerve does not
 ### Assistant module
 
 When `assistant_loops` is enabled, Nerve reuses the already-declared `nerve_nervous_event` transport for `assistant.status`, `assistant.add_loop`, `assistant.update_loop`, `assistant.complete`, and `assistant.drop_loop`. There is no extra Assistant tool schema, and the model cannot install or disable its own accountability. Operator-only install/disable controls live under `nerve setup`. The `assistant_audit` module adds recurring Reflex accountability advice; turning audit off preserves persistent loops without per-turn audit calls.
+
+### Profile reset and compatibility semantics
+
+`nerve setup --profile <name>` selects a profile and preserves explicit module overrides when that same profile is already selected. `nerve setup --reset <name>` deliberately reapplies that profile's canonical module defaults and clears its overrides.
+
+Legacy remains a compatibility mode: existing v0.2.3 advanced settings such as an explicit `reflex_backend: shadow` are honored exactly. Named profiles treat shadow execution as an explicit `shadow_testing` module cost and force the normal Reflex backend when that module is off.
+
+Invalid or unsupported profile-sidecar versions are never guessed or auto-migrated. Nerve attempts the `.json.bak`; if neither current-format document validates, it logs a warning and fails open to Legacy while leaving the files intact.

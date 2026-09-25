@@ -19,6 +19,8 @@ def main()->int:
                 path=home/"nerve"/"profile.json";path.parent.mkdir(parents=True)
                 path.write_text(json.dumps({"version":1,"nerve_profile":profile,"nerve_modules":{},"advanced":{}},indent=2)+"\n")
             env=os.environ.copy();env["HERMES_HOME"]=str(home)
+            for key in ("HERMES_KANBAN_TASK","HERMES_KANBAN_TASK_ID","HERMES_KANBAN_RUN_ID","HERMES_KANBAN_CLAIM_LOCK"):
+                env.pop(key,None)
             proc=subprocess.run([hermes,"plugins","validate",str(ROOT)],env=env,text=True,capture_output=True)
             output=(proc.stdout+proc.stderr).strip()
             print(f"=== {profile} ===\n{output}\n")

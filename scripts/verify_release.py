@@ -59,7 +59,10 @@ def main():
  cfg=reflex_config.settings();assert cfg["backend"]=="openjev";assert cfg["openjev_model"]=="openjev";assert "openjev_token" not in cfg
  reflex_config.configure(backend="jev")
  with tempfile.TemporaryDirectory() as t:
-  td=Path(t);spec=importlib.util.spec_from_file_location("hermes_nerve_plugin_verify",ROOT/"__init__.py",submodule_search_locations=[str(ROOT)]);mod=importlib.util.module_from_spec(spec);sys.modules[spec.name]=mod;spec.loader.exec_module(mod);ctx=Ctx(td);mod.register(ctx)
+  td=Path(t)
+  inherited_kanban={k:os.environ.get(k) for k in ("HERMES_KANBAN_TASK","HERMES_KANBAN_TASK_ID","HERMES_KANBAN_RUN_ID","HERMES_KANBAN_CLAIM_LOCK")}
+  os.environ["HERMES_KANBAN_TASK"]="";os.environ["HERMES_KANBAN_TASK_ID"]=""
+  spec=importlib.util.spec_from_file_location("hermes_nerve_plugin_verify",ROOT/"__init__.py",submodule_search_locations=[str(ROOT)]);mod=importlib.util.module_from_spec(spec);sys.modules[spec.name]=mod;spec.loader.exec_module(mod);ctx=Ctx(td);mod.register(ctx)
   assert set(ctx.tools)==EXPECTED_TOOLS,(set(ctx.tools)^EXPECTED_TOOLS)
   assert set(ctx.hooks)==EXPECTED_HOOKS,(ctx.hooks,EXPECTED_HOOKS)
   assert ctx.engine is not None
@@ -81,7 +84,7 @@ def main():
    os.environ["HERMES_KANBAN_TASK"]="verify-headless";os.environ["HERMES_KANBAN_RUN_ID"]="1";os.environ["HERMES_KANBAN_CLAIM_LOCK"]="claim";os.environ["HERMES_NERVE_OFFLINE_VERIFY"]="1"
    hctx=Ctx(td);mod.register(hctx);assert hctx.tools==[],hctx.tools;assert set(hctx.hooks)==EXPECTED_HOOKS
   finally:
-   for k,v in old_env.items():
+   for k,v in inherited_kanban.items():
     if v is None: os.environ.pop(k,None)
     else: os.environ[k]=v
   from hermes_nerve.work.store import SupervisionStore

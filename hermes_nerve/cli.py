@@ -7,7 +7,7 @@ from . import assistant
 from .config_resolver import resolve_config
 from .integrations import shared_context
 from .modules import MODULES
-from .profiles import save_profile
+from .profiles import load_profile, save_profile
 
 _ORDER = ("fat_cat", "operator", "lean", "marie_kondo")
 _CLI_PROFILES = _ORDER + ("legacy",)
@@ -34,7 +34,11 @@ def _show(r):
         print(f"[{'ON ' if r.enabled(mid) else 'OFF'}] {spec.name:<18} {spec.description}")
 
 
-def _save(profile, overrides=None):
+def _save(profile, overrides=None, *, reset=False):
+    if overrides is None and not reset:
+        current = load_profile()
+        if current and current.get("nerve_profile") == profile:
+            overrides = dict(current.get("nerve_modules") or {})
     doc = _doc(profile, overrides)
     path = save_profile(doc)
     resolved = resolve_config(profile=doc)
@@ -125,7 +129,7 @@ def main(argv=None):
         return 0
     target = args.profile or args.reset
     if target:
-        path = _save(target)
+        path = _save(target, reset=bool(args.reset))
         _show(resolve_config(profile=_doc(target)))
         print(f"Saved {path}")
         return 0

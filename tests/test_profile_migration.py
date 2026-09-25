@@ -28,3 +28,13 @@ class ProfileMigrationTests(unittest.TestCase):
     def test_profile_name_normalization(self):
         self.assertEqual(normalize_profile_name("Fat-Cat"),"fat_cat")
         self.assertEqual(normalize_profile_name("Marie Kondo"),"marie_kondo")
+
+    def test_unsupported_backup_version_is_not_guessed_and_remains_on_disk(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)/"nerve"; root.mkdir(); (root/"profile.json").write_text("{bad")
+            backup=root/"profile.json.bak"
+            backup.write_text(json.dumps({"version":0,"nerve_profile":"lean","nerve_modules":{"context_governor":True},"advanced":{}}))
+            before=backup.read_text()
+            with self.assertLogs("hermes_nerve.profiles",level="WARNING"):
+                self.assertIsNone(load_profile(Path(td)))
+            self.assertEqual(backup.read_text(),before)

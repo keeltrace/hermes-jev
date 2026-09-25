@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.3 — provider-contract and gate hardening
+
+- Fix provider cost visibility so missing provider-reported cost remains unknown instead of being silently reported as zero, while preserving explicit zero-cost responses.
+- Resolve provider credentials through Hermes profile-aware secret scope so gateway and cron execution can use profile-local keys without borrowing ambient secrets; preserve secret-scope failures instead of masking host scoping bugs.
+- Record bounded gate answer distributions (probabilities, top probability, and margin) with finite/range validation for operational tuning.
+- Harden enforce-mode ALLOW decisions: automatic continuation now requires both the existing confidence threshold and p(ALLOW) >= 0.90 by default; low ALLOW probability escalates to the existing human-approval path. Missing or unusable distributions retain the shipped confidence-only fallback.
+- Repair the deferred nerve_assess contract: instructions is required for every typed question, optional NOUL criteria must be exactly true/false, malformed payloads fail locally before provider work, and valid 16-question batches remain supported.
+- Keep issue #19 open for the separately proposed ask-only enforce variant; v0.2.3 includes the telemetry and dual-signal ALLOW enforcement work but does not add that mode.
+- OpenJev real 27B inference and hosted-Jev/OpenJev A/B validation remain explicitly untested and tracked in issue #10.
+
+Verification for the release candidate includes Python 3.10–3.14 CI, Hermes plugin validate/doctor, release structural verification, focused provider-contract regressions, and exact-SHA independent maintainer review.
+
 ## 0.2.2 — stable Nerve/Open-Reflex release
 
 - Promote the validated dev17 RC to stable `0.2.2` after PR #9 release qualification.

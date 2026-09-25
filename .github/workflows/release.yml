@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Version to release, without the leading v (for example 0.2.2)
+        description: Version to release, without the leading v (for example 0.2.3)
         required: false
         type: string
 
@@ -98,20 +98,20 @@ jobs:
           git archive --format=zip --prefix="nerve-v${VERSION}/" -o "dist/nerve-v${VERSION}.zip" HEAD
           git archive --format=tar.gz --prefix="nerve-v${VERSION}/" -o "dist/nerve-v${VERSION}.tar.gz" HEAD
           (cd dist && sha256sum nerve-v${VERSION}.zip nerve-v${VERSION}.tar.gz > SHA256SUMS.txt)
-          printf '%s\n' \
-            '## Nerve v0.2.2' \
-            '' \
-            'This release promotes the validated dev17 RC and lands the Nerve supervisory architecture from PR #9.' \
-            '' \
-            '- Nerve/Reflex is the watchdog and forecaster; the main Hermes orchestrator/reviewer retains the final COMPLETE / MORE WORK / CHANGES / BLOCK authority.' \
-            '- Hosted Jev and self-hosted Laya are live-validated on the RC path, including the SSH transport and orchestrator-review handoff.' \
-            '- OpenJev integration is included and covered by unit/interface tests, setup guards, identity pinning, and LOCAL_ONLY provenance.' \
-            '- Source archives include the frozen dev6 benchmark fixture and the documented dev17 verification path is release-gated.' \
-            '' \
-            '### OpenJev validation status' \
-            '' \
-            'Real OpenJev 27B model inference and hosted-Jev vs OpenJev A/B testing have **not** been performed on suitable large-GPU hardware. This is intentionally tracked as follow-up issue #10 and is not claimed as tested by v0.2.2.' \
-            > dist/RELEASE_NOTES.md
+          python - <<'PYREL'
+          import os, re
+          from pathlib import Path
+
+          version = os.environ["VERSION"]
+          changelog = Path("CHANGELOG.md").read_text()
+          pattern = rf"^## {re.escape(version)}\b.*?(?=^## |\Z)"
+          match = re.search(pattern, changelog, re.M | re.S)
+          if not match:
+              raise SystemExit(f"CHANGELOG.md has no release section for {version}")
+          section = match.group(0).strip()
+          body = section.split("\n", 1)[1].lstrip() if "\n" in section else ""
+          Path("dist/RELEASE_NOTES.md").write_text(f"## Nerve v{version}\n\n{body}\n")
+          PYREL
 
       - name: Create GitHub release
         if: env.RELEASE_EXISTS != '1'

@@ -32,7 +32,7 @@ class RegistrationTests(unittest.TestCase):
     def test_version_and_tools_and_hooks(self):
         with tempfile.TemporaryDirectory() as td:
             mod=self.load_plugin();ctx=FakeCtx(Path(td));mod.register(ctx)
-            self.assertEqual(VERSION,"0.2.2")
+            self.assertEqual(VERSION,"0.2.3")
             self.assertEqual(len(ctx.tools),16)
             for name in ("nerve_decide","nerve_nervous_event","nerve_supervise_card","nerve_work_event","nerve_remote_delegate_task","nerve_remote_worker_control"):
                 self.assertIn(name,ctx.tools)

@@ -1,4 +1,4 @@
-"""Nerve plugin registration — v0.2.2 Nerve supervision and open Reflex backends."""
+"""Nerve plugin registration — v0.2.3 Nerve supervision and open Reflex backends."""
 from __future__ import annotations
 
 import logging

@@ -76,10 +76,40 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "v${VERSION}" >/dev/null 2>&1; then
-            current_name="$(gh release view "v${VERSION}" --json name --jq .name)"
-            git fetch --force origin "refs/tags/v${VERSION}:refs/tags/v${VERSION}" >/dev/null 2>&1 || true
-            current_target="$(git rev-list -n 1 "v${VERSION}" 2>/dev/null || true)"
+          release_json="$(mktemp)"
+          release_err="$(mktemp)"
+          release_rc=0
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v${VERSION}" >"${release_json}" 2>"${release_err}" || release_rc=$?
+
+          tag_json="$(mktemp)"
+          tag_err="$(mktemp)"
+          tag_rc=0
+          gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v${VERSION}" >"${tag_json}" 2>"${tag_err}" || tag_rc=$?
+
+          if [ "${release_rc}" -eq 0 ]; then
+            current_name="$(jq -r .name <"${release_json}")"
+            if [ "${tag_rc}" -ne 0 ]; then
+              echo "Release v${VERSION} exists but its authoritative tag could not be resolved." >&2
+              cat "${tag_err}" >&2
+              exit 1
+            fi
+
+            current_target="$(jq -r .object.sha <"${tag_json}")"
+            current_type="$(jq -r .object.type <"${tag_json}")"
+            while [ "${current_type}" = "tag" ]; do
+              peeled_json="$(mktemp)"
+              if ! gh api "repos/${GITHUB_REPOSITORY}/git/tags/${current_target}" >"${peeled_json}"; then
+                echo "Could not peel annotated tag v${VERSION}." >&2
+                exit 1
+              fi
+              current_target="$(jq -r .object.sha <"${peeled_json}")"
+              current_type="$(jq -r .object.type <"${peeled_json}")"
+            done
+            if [ "${current_type}" != "commit" ]; then
+              echo "Tag v${VERSION} resolves to unexpected object type ${current_type}." >&2
+              exit 1
+            fi
+
             if [ "$current_name" = "Nerve v${VERSION}" ] && [ "$current_target" = "${GITHUB_SHA}" ]; then
               echo "Release v${VERSION} already targets this exact commit; nothing to publish."
               echo "RELEASE_EXISTS=1" >> "${GITHUB_ENV}"
@@ -87,11 +117,22 @@ jobs:
               echo "Release v${VERSION} already exists and is immutable: name=$current_name target=$current_target requested=${GITHUB_SHA}" >&2
               exit 1
             fi
-          elif git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
-            echo "Tag v${VERSION} already exists without a matching GitHub release; refusing to retag it." >&2
-            exit 1
+          elif grep -q 'HTTP 404' "${release_err}"; then
+            if [ "${tag_rc}" -eq 0 ]; then
+              current_target="$(jq -r .object.sha <"${tag_json}")"
+              echo "Tag v${VERSION} already exists at ${current_target} without a matching GitHub release; refusing to reuse it." >&2
+              exit 1
+            elif grep -q 'HTTP 404' "${tag_err}"; then
+              echo "RELEASE_EXISTS=0" >> "${GITHUB_ENV}"
+            else
+              echo "Could not determine whether tag v${VERSION} exists." >&2
+              cat "${tag_err}" >&2
+              exit 1
+            fi
           else
-            echo "RELEASE_EXISTS=0" >> "${GITHUB_ENV}"
+            echo "Could not determine whether release v${VERSION} exists." >&2
+            cat "${release_err}" >&2
+            exit 1
           fi
 
       - name: Build source archives

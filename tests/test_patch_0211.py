@@ -141,8 +141,9 @@ class Patch0211Tests(unittest.TestCase):
 
         self.assertEqual(provider.calls, 0, "provider-invalid questions must fail before network/provider work")
 
-    def test_assess_valid_16_question_batch_reaches_provider_once_and_writes_receipt(self):
+    def test_deferred_assess_public_tool_rejects_invalid_and_accepts_valid_16_batch(self):
         provider = CountingProvider()
+        runtime = engine.DecisionEngine(provider)
         questions = {
             f"q{i:02d}": {
                 "type": "noul",
@@ -151,18 +152,45 @@ class Patch0211Tests(unittest.TestCase):
             }
             for i in range(16)
         }
-        with tempfile.TemporaryDirectory() as td, patch.dict(
-            os.environ, {"HERMES_NERVE_RECEIPTS": str(Path(td) / "r.jsonl")}, clear=False
-        ):
-            result = engine.DecisionEngine(provider).assess(
-                state={"batch": "synthetic"},
-                questions=questions,
-                contract="issue-8/valid-16/v1",
-            )
-            self.assertEqual(provider.calls, 1)
-            self.assertEqual(len(result["answers"]), 16)
-            self.assertTrue(result["receipt_id"].startswith("jevrec-"))
-            self.assertTrue((Path(td) / "r.jsonl").exists())
+        original = tools._engine_factory
+        tools._engine_factory = lambda: runtime
+        try:
+            missing = json.loads(tools.nerve_assess(
+                {"state": {}, "questions": {"missing": {"type": "noul"}}}
+            ))
+            self.assertFalse(missing["ok"])
+            self.assertEqual(missing["error"], "question 'missing' requires instructions")
+            self.assertEqual(provider.calls, 0)
+
+            aliases = json.loads(tools.nerve_assess({
+                "state": {},
+                "questions": {
+                    "alias": {
+                        "type": "noul",
+                        "instructions": "Is this true?",
+                        "criteria": {"yes": "yes", "no": "no"},
+                    }
+                },
+            }))
+            self.assertFalse(aliases["ok"])
+            self.assertIn("exactly 'true' and 'false' keys", aliases["error"])
+            self.assertEqual(provider.calls, 0)
+
+            with tempfile.TemporaryDirectory() as td, patch.dict(
+                os.environ, {"HERMES_NERVE_RECEIPTS": str(Path(td) / "r.jsonl")}, clear=False
+            ):
+                result = json.loads(tools.nerve_assess({
+                    "state": {"batch": "synthetic"},
+                    "questions": questions,
+                    "contract": "issue-8/valid-16/v1",
+                }))
+                self.assertTrue(result["ok"])
+                self.assertEqual(provider.calls, 1)
+                self.assertEqual(len(result["answers"]), 16)
+                self.assertTrue(result["receipt_id"].startswith("jevrec-"))
+                self.assertTrue((Path(td) / "r.jsonl").exists())
+        finally:
+            tools._engine_factory = original
 
     def test_jev_internal_failure_is_recorded_and_never_remotely_supervised(self):
         NoopNervousEngine.reset()

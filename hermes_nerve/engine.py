@@ -92,7 +92,9 @@ class DecisionEngine:
                 raise ValueError(f"question {name!r} has unsupported type {qtype!r}")
             q["type"] = qtype
 
-            if "instructions" in q and q["instructions"] is not None and not isinstance(q["instructions"], (str, dict, list, tuple)):
+            if "instructions" not in q or q["instructions"] is None:
+                raise ValueError(f"question {name!r} requires instructions")
+            if not isinstance(q["instructions"], (str, dict, list, tuple)):
                 raise ValueError(f"question {name!r} instructions must be JSON-compatible text/context")
 
             criteria = q.get("criteria")
@@ -102,8 +104,16 @@ class DecisionEngine:
             elif qtype == "score":
                 if not isinstance(criteria, (list, tuple)) or len(criteria) < 2:
                     raise ValueError(f"score question {name!r} requires an ordered criteria list with at least two entries")
-            elif criteria is not None and not isinstance(criteria, dict):
-                raise ValueError(f"noul question {name!r} criteria must be an object when provided")
+            elif criteria is not None:
+                if not isinstance(criteria, dict):
+                    raise ValueError(f"noul question {name!r} criteria must be an object when provided")
+                if set(criteria) != {"true", "false"}:
+                    raise ValueError(f"noul question {name!r} criteria must contain exactly 'true' and 'false' keys")
+                for label in ("true", "false"):
+                    if not isinstance(criteria[label], (str, dict, list, tuple)):
+                        raise ValueError(
+                            f"noul question {name!r} criteria.{label} must be JSON-compatible text/context"
+                        )
             normalized[name] = q
         return normalized
 

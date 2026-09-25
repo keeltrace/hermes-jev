@@ -361,7 +361,7 @@ class ToolTests(unittest.TestCase):
         tools._engine_factory = lambda: engine.DecisionEngine(FakeProvider(answers={"q": {"type": "noul", "noul": 0.8}}))
         try:
             with tempfile.TemporaryDirectory() as td, patch.dict(os.environ, {"HERMES_NERVE_RECEIPTS": str(Path(td) / "r.jsonl")}, clear=False):
-                payload = json.loads(tools.nerve_assess({"state": "x", "questions": {"q": {"type": "noul"}}}))
+                payload = json.loads(tools.nerve_assess({"state": "x", "questions": {"q": {"type": "noul", "instructions": "Is this true?"}}}))
         finally:
             tools._engine_factory = original
         self.assertTrue(payload["ok"])

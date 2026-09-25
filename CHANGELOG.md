@@ -9,6 +9,7 @@
 - Repair the deferred nerve_assess contract: instructions is required for every typed question, optional NOUL criteria must be exactly true/false, malformed payloads fail locally before provider work, and valid 16-question batches remain supported.
 - Keep issue #19 open for the separately proposed ask-only enforce variant; v0.2.3 includes the telemetry and dual-signal ALLOW enforcement work but does not add that mode.
 - OpenJev real 27B inference and hosted-Jev/OpenJev A/B validation remain explicitly untested and tracked in issue #10.
+- Make stable GitHub releases immutable: rerunning an existing version is a no-op only on the exact same release SHA; conflicting release/tag reuse now fails closed instead of deleting and retagging history.
 
 Verification for the release candidate includes Python 3.10–3.14 CI, Hermes plugin validate/doctor, release structural verification, focused provider-contract regressions, and exact-SHA independent maintainer review.
 

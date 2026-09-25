@@ -78,15 +78,18 @@ jobs:
         run: |
           if gh release view "v${VERSION}" >/dev/null 2>&1; then
             current_name="$(gh release view "v${VERSION}" --json name --jq .name)"
-            current_target="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v${VERSION}" --jq .target_commitish)"
+            git fetch --force origin "refs/tags/v${VERSION}:refs/tags/v${VERSION}" >/dev/null 2>&1 || true
+            current_target="$(git rev-list -n 1 "v${VERSION}" 2>/dev/null || true)"
             if [ "$current_name" = "Nerve v${VERSION}" ] && [ "$current_target" = "${GITHUB_SHA}" ]; then
               echo "Release v${VERSION} already targets this exact commit; nothing to publish."
               echo "RELEASE_EXISTS=1" >> "${GITHUB_ENV}"
             else
-              echo "Replacing existing v${VERSION}: name=$current_name target=$current_target new_target=${GITHUB_SHA}"
-              gh release delete "v${VERSION}" --yes --cleanup-tag
-              echo "RELEASE_EXISTS=0" >> "${GITHUB_ENV}"
+              echo "Release v${VERSION} already exists and is immutable: name=$current_name target=$current_target requested=${GITHUB_SHA}" >&2
+              exit 1
             fi
+          elif git rev-parse -q --verify "refs/tags/v${VERSION}" >/dev/null; then
+            echo "Tag v${VERSION} already exists without a matching GitHub release; refusing to retag it." >&2
+            exit 1
           else
             echo "RELEASE_EXISTS=0" >> "${GITHUB_ENV}"
           fi

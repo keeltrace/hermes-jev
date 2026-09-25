@@ -106,4 +106,4 @@ After installation, run the printed Hermes Plugin Doctor command. Nerve does not
 
 ### Assistant module
 
-When the `assistant_loops` module is enabled, Hermes gains `nerve_assistant`. Supported operations are install/disable/status, add/update/drop loop, and evidence-backed completion. The `assistant_audit` module adds recurring Reflex accountability advice. Turning audit off preserves persistent loops without per-turn audit calls.
+When `assistant_loops` is enabled, Nerve reuses the already-declared `nerve_nervous_event` transport for `assistant.status`, `assistant.add_loop`, `assistant.update_loop`, `assistant.complete`, and `assistant.drop_loop`. There is no extra Assistant tool schema, and the model cannot install or disable its own accountability. Operator-only install/disable controls live under `nerve setup`. The `assistant_audit` module adds recurring Reflex accountability advice; turning audit off preserves persistent loops without per-turn audit calls.

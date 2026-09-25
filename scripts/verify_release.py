@@ -23,13 +23,15 @@ EXPECTED_TOOLS={
  "nerve_supervise_card","nerve_work_event","nerve_work_status","nerve_remote_delegate_task","nerve_remote_worker_status","nerve_remote_worker_result","nerve_remote_worker_cancel","nerve_remote_worker_control",
 }
 EXPECTED_HOOKS={"pre_tool_call","post_tool_call","pre_llm_call","transform_tool_result","pre_verify","post_api_request","api_request_error","post_llm_call","on_session_end"}
-PROFILE_FAT_CAT_TOOLS={"nerve_decide","nerve_rank","nerve_verify","nerve_assess","nerve_context_curate","nerve_context_rehydrate","nerve_stats","nerve_nervous_event","nerve_assistant","nerve_supervise_card","nerve_work_event","nerve_work_status"}
+PROFILE_FAT_CAT_TOOLS={"nerve_decide","nerve_rank","nerve_verify","nerve_assess","nerve_context_curate","nerve_context_rehydrate","nerve_stats","nerve_nervous_event","nerve_supervise_card","nerve_work_event","nerve_work_status"}
+PROFILE_OPERATOR_TOOLS={"nerve_decide","nerve_rank","nerve_verify","nerve_assess","nerve_context_curate","nerve_context_rehydrate","nerve_stats","nerve_nervous_event"}
+PROFILE_MARIE_KONDO_TOOLS={"nerve_decide","nerve_rank","nerve_verify","nerve_assess","nerve_stats","nerve_supervise_card","nerve_work_event","nerve_work_status"}
 PROFILE_LEAN_TOOLS={"nerve_decide","nerve_rank","nerve_verify","nerve_assess","nerve_stats","nerve_nervous_event","nerve_supervise_card","nerve_work_event","nerve_work_status"}
 
 class Ctx:
- def __init__(self,td):self.tools=[];self.hooks=[];self.engine=None;self.td=td
+ def __init__(self,td,extra=None):self.tools=[];self.hooks=[];self.engine=None;self.td=td;self.extra=extra or {}
  def get_config(self,key,default=None):
-  return {"work_supervision_db":str(self.td/"work.db"),"remote_data_dir":str(self.td/"remote")}.get(key,default)
+  values={"work_supervision_db":str(self.td/"work.db"),"remote_data_dir":str(self.td/"remote")};values.update(self.extra);return values.get(key,default)
  def register_tool(self,*,name,schema=None,handler=None,**kw):self.tools.append(name)
  def register_hook(self,name,callback):self.hooks.append(name)
  def register_context_engine(self,engine):self.engine=engine
@@ -61,6 +63,17 @@ def main():
   assert set(ctx.tools)==EXPECTED_TOOLS,(set(ctx.tools)^EXPECTED_TOOLS)
   assert set(ctx.hooks)==EXPECTED_HOOKS,(ctx.hooks,EXPECTED_HOOKS)
   assert ctx.engine is not None
+  profiles={
+   "fat_cat":(PROFILE_FAT_CAT_TOOLS,True),
+   "operator":(PROFILE_OPERATOR_TOOLS,True),
+   "lean":(PROFILE_LEAN_TOOLS,False),
+   "marie_kondo":(PROFILE_MARIE_KONDO_TOOLS,False),
+  }
+  for profile,(expected_tools,expect_engine) in profiles.items():
+   pctx=Ctx(td,{"nerve_profile":profile,"remote_hosts":{}});mod.register(pctx)
+   assert set(pctx.tools)==expected_tools,(profile,set(pctx.tools)^expected_tools)
+   assert (pctx.engine is not None)==expect_engine,(profile,pctx.engine)
+   assert "nerve_assistant" not in pctx.tools,profile
   # Ordinary Kanban workers must expose zero Jev schemas while retaining the
   # headless work-supervision hook path.
   old_env={k:os.environ.get(k) for k in ("HERMES_KANBAN_TASK","HERMES_KANBAN_RUN_ID","HERMES_KANBAN_CLAIM_LOCK","HERMES_NERVE_OFFLINE_VERIFY")}
@@ -78,6 +91,6 @@ def main():
  from hermes_nerve.work import runtime as work_runtime
  work_runtime.configure(enabled=True, completion_controller_attempts=3)
  assert work_runtime.settings()["completion_controller_attempts"]==3
- print(f"PASS version={EXPECTED} legacy_tools={len(EXPECTED_TOOLS)} fat_cat_tools={len(PROFILE_FAT_CAT_TOOLS)} lean_tools={len(PROFILE_LEAN_TOOLS)} hook_names={len(EXPECTED_HOOKS)} catalog_version={catalog_version()} profiles=PASS single_authority=PASS controller_completion=PASS reflex_laya=PASS reflex_openjev=PASS")
+ print(f"PASS version={EXPECTED} legacy_tools={len(EXPECTED_TOOLS)} fat_cat_tools={len(PROFILE_FAT_CAT_TOOLS)} operator_tools={len(PROFILE_OPERATOR_TOOLS)} lean_tools={len(PROFILE_LEAN_TOOLS)} marie_kondo_tools={len(PROFILE_MARIE_KONDO_TOOLS)} hook_names={len(EXPECTED_HOOKS)} catalog_version={catalog_version()} profiles=REGISTERED_AND_ASSERTED single_authority=PASS controller_completion=PASS reflex_laya=PASS reflex_openjev=PASS")
  return 0
 if __name__=="__main__":raise SystemExit(main())

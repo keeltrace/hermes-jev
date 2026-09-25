@@ -109,7 +109,7 @@ config_schema:
   work_repeated_failure_trigger: {type: int, default: 2}
   work_directive_max_chars: {type: int, default: 320}
   work_completion_controller_attempts: {type: int, default: 3, description: "Bounded controller-local native completion retries after verified PASS; never consumes another worker-model turn."}
-  work_auto_estimate_task_budget: {type: bool, default: true, description: "Estimate a conservative per-task worker[REDACTED] from DoD complexity instead of using only the static floor."}
+  work_auto_estimate_task_budget: {type: bool, default: true, description: "Estimate a conservative per-task worker budget from DoD complexity instead of using only the static floor."}
   work_budget_dod_required: {type: bool, default: true, description: "Append non-blocking budget telemetry to the contract. Budget is execution policy, not a required correctness criterion."}
   work_budget_dod_tolerance: {type: float, default: 1.10, description: "Small completion tolerance above the estimated target to reduce false-positive budget failures."}
   work_budget_estimator_base_tokens: {type: int, default: 120000}

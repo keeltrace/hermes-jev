@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
 from .modules import MODULES
-from .profiles import PROFILES, load_profile, validate_profile
+from .profiles import PROFILES, load_profile, normalize_profile_name, validate_profile
 
 
 @dataclass
@@ -37,38 +37,33 @@ def _parse_module_overrides(value: Any) -> dict[str, bool]:
     return {str(k): bool(v) for k, v in value.items() if k in MODULES and type(v) is bool}
 
 
-def resolve_config(
-    get_config: Callable | None = None,
-    *,
-    home=None,
-    profile: dict | None = None,
-) -> ResolvedNerveConfig:
-    """Resolve defaults -> profile -> explicit module overrides -> advanced settings.
+def resolve_config(get_config: Callable | None = None, *, home=None, profile: dict | None = None) -> ResolvedNerveConfig:
+    """Resolve defaults -> selected profile -> same-source overrides -> advanced settings.
 
-    With no sidecar and no explicit Hermes nerve_profile setting, resolution
-    deliberately returns the v0.2.3 legacy behavior. Upgrades therefore never
-    silently adopt a new personality.
+    No sidecar and no explicit Hermes ``nerve_profile`` means exact Legacy mode.
+    If Hermes selects a different profile from the sidecar, sidecar overrides and
+    advanced values do not bleed into that different profile.
     """
     getter = get_config or (lambda key, default=None: default)
     document = load_profile(home) if profile is None else validate_profile(profile)
 
-    configured_profile = str(getter("nerve_profile", "") or "").strip().replace("-", "_").lower()
+    configured_profile = normalize_profile_name(getter("nerve_profile", ""))
     configured_modules = _parse_module_overrides(getter("nerve_modules", None))
+    sidecar_name = document["nerve_profile"] if document else ""
 
-    if document is None and configured_profile:
+    if configured_profile:
         if configured_profile not in PROFILES:
             raise ValueError(f"Unknown Nerve profile: {configured_profile}")
-        document = {
-            "version": 1,
-            "nerve_profile": configured_profile,
-            "nerve_modules": configured_modules,
-            "advanced": {},
-        }
+        name = configured_profile
+        use_sidecar_values = bool(document and sidecar_name == configured_profile)
+    else:
+        name = sidecar_name or "legacy"
+        use_sidecar_values = bool(document)
 
-    name = configured_profile or (document["nerve_profile"] if document else "legacy")
     if name not in PROFILES:
         raise ValueError(f"Unknown Nerve profile: {name}")
-    advanced = dict(document.get("advanced", {})) if document else {}
+
+    advanced = dict(document.get("advanced", {})) if use_sidecar_values and document else {}
 
     def get(key, default=None):
         return advanced[key] if key in advanced else getter(key, default)
@@ -80,11 +75,7 @@ def resolve_config(
             "work_supervision": bool(get("work_supervision_enabled", True)),
             "token_trajectory": bool(get("work_nerve_observer_enabled", True)),
             "action_gate": get("gate_mode", "off") != "off",
-            "context_governor": bool(
-                get("context_ledger_enabled", True)
-                or get("context_engine_register", True)
-                or get("context_curation_mode", "shadow") != "off"
-            ),
+            "context_governor": bool(get("context_ledger_enabled", True) or get("context_engine_register", True) or get("context_curation_mode", "shadow") != "off"),
             "remote_workers": True,
             "shared_context": False,
             "assistant_loops": False,
@@ -98,13 +89,10 @@ def resolve_config(
         if name == "fat_cat":
             modules["remote_workers"] = bool(get("remote_hosts", {}))
 
-    reasons = {
-        key: ("existing configuration" if name in ("legacy", "custom") else name + " preset")
-        for key in MODULES
-    }
+    reasons = {key: ("existing configuration" if name in ("legacy", "custom") else name + " preset") for key in MODULES}
 
     merged_overrides = {}
-    if document:
+    if use_sidecar_values and document:
         merged_overrides.update(_parse_module_overrides(document.get("nerve_modules", {})))
     merged_overrides.update(configured_modules)
     for key, value in merged_overrides.items():

@@ -75,3 +75,48 @@ class AssistantTests(unittest.TestCase):
         p=Provider("NUDGE",.9); assistant._engine_factory=lambda:DecisionEngine(p)
         self.assertIsNotNone(assistant.pre_llm_call(user_message="next"))
         self.assertEqual(p.calls,0)
+class AssistantAuthorityRegressionTests(unittest.TestCase):
+    def setUp(self):
+        self.td=tempfile.TemporaryDirectory()
+        self.env=patch.dict(os.environ,{"HERMES_NERVE_ASSISTANT_DIR":self.td.name})
+        self.env.start()
+        receipts.configure(enabled=False)
+        assistant.configure(loops_enabled=True,audit_enabled=False,provider_max_chars=1200,prompt_max_chars=1200)
+        assistant._engine_factory=DecisionEngine
+        assistant.install()
+    def tearDown(self):
+        assistant._engine_factory=DecisionEngine
+        receipts.configure(enabled=True)
+        self.env.stop(); self.td.cleanup()
+
+    def test_drop_invalidates_inflight_completion_review(self):
+        loop=assistant.add_loop(title="Do not resurrect",definition_of_done="proof")
+        def drop_during_review():
+            assistant.drop_loop(loop["id"])
+        provider=Provider("PASS",.99,live=False,mutate=drop_during_review)
+        assistant._engine_factory=lambda:DecisionEngine(provider)
+        result=assistant.review_completion(loop["id"],{"proof":True})
+        self.assertTrue(result["stale"])
+        self.assertFalse(result["closed"])
+        current=assistant.loops()[0]
+        self.assertEqual(current["state"],"dropped")
+
+    def test_model_surface_has_no_install_or_disable_kill_switch(self):
+        from hermes_nerve import schemas, tools
+        self.assertFalse(hasattr(schemas,"NERVE_ASSISTANT"))
+        self.assertFalse(hasattr(tools,"nerve_assistant"))
+        response=json.loads(tools.nerve_nervous_event({"type":"assistant.disable","goal":"turn yourself off"}))
+        self.assertFalse(response["ok"])
+        self.assertTrue(assistant.enabled())
+
+    def test_existing_event_transport_operates_loops_when_enabled(self):
+        from hermes_nerve import tools
+        created=json.loads(tools.nerve_nervous_event({
+            "type":"assistant.add_loop","goal":"Ship fix",
+            "state":{"next":"run tests","definition_of_done":"tests pass"}
+        }))
+        self.assertTrue(created["ok"])
+        loop_id=created["assistant"]["id"]
+        status=json.loads(tools.nerve_nervous_event({"type":"assistant.status","goal":"status"}))
+        self.assertTrue(status["ok"])
+        self.assertEqual(status["assistant"]["active_loops"][0]["id"],loop_id)

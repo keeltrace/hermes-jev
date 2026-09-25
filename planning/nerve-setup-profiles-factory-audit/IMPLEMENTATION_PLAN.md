@@ -602,7 +602,7 @@ Required invariants:
 - headless Kanban remains schema-minimal;
 - v0.2.3 config migrates without surprise enablement;
 - Shared Context disabled means no footprint;
-- Assistant disabled means no footprint;
+- Assistant disabled means no Assistant hooks/provider/prompt/storage footprint and no additional tool schema; enabled Assistant actions reuse the existing nervous-event transport;
 - profile changes cannot grant new action authority;
 - setup performs no remote model/provider work.
 

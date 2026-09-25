@@ -193,7 +193,7 @@ The first menu is intentionally compact:
 5. Marie Kondo        - Minimum Nerve: only features that clearly earn their cost.
 ```
 
-Profile state is persisted atomically at `$HERMES_HOME/nerve/profile.json`. Advanced Hermes plugin settings continue to use the existing configuration surface. A missing profile sidecar and missing `nerve_profile` setting resolve to Legacy behavior.
+Profile state is persisted atomically at `$HERMES_HOME/nerve/profile.json`. Advanced Hermes plugin settings continue to use the existing configuration surface. A missing profile sidecar and missing `nerve_profile` setting enter a dedicated v0.2.3 Legacy registration path. The exact 16-tool/9-hook/context-engine/headless behavior is regression-pinned, including the v0.2.3 `nerve_auto_kill` fallback and pre-LLM first-result semantics.
 
 ### Hard-OFF modules
 

@@ -4,25 +4,40 @@ import importlib.util
 import sys
 import tempfile
 import unittest
+import json
+import os
+from unittest.mock import patch
 from pathlib import Path
 
 from hermes_nerve.provenance import VERSION
+from hermes_nerve import assistant
+from hermes_nerve.client import JevResponse
+from hermes_nerve.engine import DecisionEngine
 
 ROOT=Path(__file__).resolve().parents[1]
 
 
 class FakeCtx:
-    def __init__(self, home: Path):
-        self.tools={}; self.hooks=[]; self.engine=None; self.home=home
+    def __init__(self, home: Path, extra=None):
+        self.tools={}; self.hooks=[]; self.engine=None; self.home=home; self.extra=extra or {}
     def get_config(self,key,default=None):
         overrides={
             "work_supervision_db": str(self.home/"work.db"),
             "remote_data_dir": str(self.home/"remote"),
+            "assistant_data_dir": str(self.home/"assistant"),
         }
+        overrides.update(self.extra)
         return overrides.get(key,default)
     def register_tool(self,*,name,schema=None,handler=None,**kwargs): self.tools[name]=(schema,handler)
     def register_hook(self,name,callback): self.hooks.append((name,callback))
     def register_context_engine(self,engine): self.engine=engine
+
+
+class _Provider:
+    def __init__(self,value,confidence=.95): self.value=value; self.confidence=confidence; self.calls=0
+    def system_one(self,*,state,questions,model=None):
+        self.calls+=1; labels=list(questions["decision"]["criteria"]); probs={x:(self.confidence if x==self.value else (1-self.confidence)/(len(labels)-1)) for x in labels}
+        return JevResponse(model="test",answers={"decision":{"choice":self.value,"confidence":self.confidence,"probabilities":probs}},usage={},latency_ms=1)
 
 
 class RegistrationTests(unittest.TestCase):
@@ -48,6 +63,33 @@ class RegistrationTests(unittest.TestCase):
             noul_criteria=by_type["noul"]["properties"]["criteria"]
             self.assertEqual(set(noul_criteria["required"]),{"true","false"})
             self.assertFalse(noul_criteria["additionalProperties"])
+
+    def test_assistant_public_lifecycle_restart_hook_and_headless_isolation(self):
+        with tempfile.TemporaryDirectory() as td:
+            home=Path(td); mod=self.load_plugin(); ctx=FakeCtx(home); mod.register(ctx)
+            tool=ctx.tools["nerve_assistant"][1]
+            self.assertTrue(json.loads(tool({"action":"install"}))["assistant"]["enabled"])
+            created=json.loads(tool({"action":"add_loop","title":"Finish report","next":"run checks","definition_of_done":"checks pass"}))
+            loop_id=created["assistant"]["id"]
+            p=_Provider("NUDGE",.91); mod.assistant._engine_factory=lambda: DecisionEngine(p)
+            pre_llm=dict(ctx.hooks)["pre_llm_call"]
+            hint=pre_llm(user_message="continue")
+            self.assertIn("NERVE ASSISTANT",hint); self.assertIn("REFLEX ACCOUNTABILITY REVIEW",hint); self.assertEqual(p.calls,1)
+            p2=_Provider("PASS",.96); mod.assistant._engine_factory=lambda: DecisionEngine(p2)
+            completed=json.loads(tool({"action":"complete","loop_id":loop_id,"evidence":{"checks":"pass"}}))
+            self.assertTrue(completed["assistant"]["closed"]); self.assertEqual(completed["assistant"]["loop"]["state"],"done")
+            mod.assistant._engine_factory=DecisionEngine
+            ctx2=FakeCtx(home); mod.register(ctx2)
+            status=json.loads(ctx2.tools["nerve_assistant"][1]({"action":"status"}))["assistant"]
+            self.assertTrue(status["enabled"]); self.assertEqual(status["active_loop_count"],0); self.assertEqual(status["loop_count"],1)
+            with patch.dict(os.environ,{"HERMES_KANBAN_TASK":"task-1"},clear=False):
+                headless=FakeCtx(home,{"work_supervision_enabled":False,"work_headless_workers":True})
+                mod.register(headless)
+                self.assertNotIn("nerve_assistant",headless.tools)
+                pre=dict(headless.hooks)["pre_llm_call"]
+                out=pre(user_message="worker turn")
+                self.assertTrue(out is None or "NERVE ASSISTANT" not in str(out))
+
 
 
 if __name__=="__main__":unittest.main()

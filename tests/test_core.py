@@ -812,7 +812,7 @@ class ProvenanceAndLedgerTests(unittest.TestCase):
                 state={}, instructions="choose", choices=["A", "B"]
             ).as_dict()
         self.assertEqual(result["execution"]["engine"], "hermes-nerve")
-        self.assertEqual(result["execution"]["version"], "0.2.2")
+        self.assertEqual(result["execution"]["version"], "0.2.3")
         self.assertEqual(result["execution"]["transport"], "openrouter-decisions")
         self.assertTrue(result["execution"]["live_provider_call"])
 

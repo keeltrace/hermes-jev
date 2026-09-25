@@ -1,6 +1,6 @@
 # Nerve
 
-Nerve is an asynchronous System-1 supervisory layer for Hermes Agent. `0.2.2` promotes the validated dev17 RC and preserves dev16 controller-completion while correcting budget authority from live release evidence: Nerve/Reflex is a watchdog and forecaster, while the main Hermes orchestrator/reviewer owns the final stop/continue decision. Dev17 validates that architecture across hosted Jev plus self-hosted Laya and OpenJev Reflex backends. The core plugin remains dependency-free; model runtimes stay in sidecars. After verified PASS, the worker no longer owns Kanban completion: the hook/controller performs the native transition and lifecycle retries without another model-solving loop.
+Nerve is an asynchronous System-1 supervisory layer for Hermes Agent. `0.2.3` is the post-0.2.2 maintenance release and preserves the validated dev17 architecture while hardening provider contracts, credentials, telemetry, and gate enforcement. `0.2.2` promoted the validated dev17 RC and preserves dev16 controller-completion while correcting budget authority from live release evidence: Nerve/Reflex is a watchdog and forecaster, while the main Hermes orchestrator/reviewer owns the final stop/continue decision. Dev17 validates that architecture across hosted Jev plus self-hosted Laya and OpenJev Reflex backends. The core plugin remains dependency-free; model runtimes stay in sidecars. After verified PASS, the worker no longer owns Kanban completion: the hook/controller performs the native transition and lifecycle retries without another model-solving loop.
 
 
 ## Dev17 — open backend release matrix
@@ -107,7 +107,7 @@ Nerve deliberately does **not** own canonical task status, dependencies, retries
 From the extracted final package:
 
 ```bash
-cd hermes-nerve-v0.2.2
+cd nerve-v0.2.3
 bash scripts/install_dev17_profile.sh abtest-jev-dev17
 ```
 

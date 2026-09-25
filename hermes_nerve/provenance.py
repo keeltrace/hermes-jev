@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Any
-VERSION="0.2.2"; VERIFIED="VERIFIED"; LOCAL_ONLY="LOCAL_ONLY"; UNVERIFIED="UNVERIFIED"; ERROR="ERROR"
+VERSION="0.2.3"; VERIFIED="VERIFIED"; LOCAL_ONLY="LOCAL_ONLY"; UNVERIFIED="UNVERIFIED"; ERROR="ERROR"
 def classify_status(*,live_provider_call:bool,request_id:str="",receipt_id:str="",error:bool=False,stale:bool=False)->str:
  if error:return ERROR
  if stale:return UNVERIFIED

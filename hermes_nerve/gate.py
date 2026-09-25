@@ -51,12 +51,13 @@ _SHELL_META_RE = re.compile(r"(?:&&|\|\||[;|><`]|\$\()")
 
 _configured_mode: str | None = None
 _configured_min_confidence: float | None = None
+_configured_min_allow_probability: float | None = None
 _configured_scope: str | None = None
 
 
-def configure(*, mode: Any = None, min_confidence: Any = None, scope: Any = None) -> None:
+def configure(*, mode: Any = None, min_confidence: Any = None, min_allow_probability: Any = None, scope: Any = None) -> None:
     """Apply Hermes plugin settings captured during ``register(ctx)``."""
-    global _configured_mode, _configured_min_confidence, _configured_scope
+    global _configured_mode, _configured_min_confidence, _configured_min_allow_probability, _configured_scope
 
     raw_mode = str(mode if mode is not None else "off").strip().lower()
     _configured_mode = raw_mode if raw_mode in {"off", "advisory", "enforce"} else "off"
@@ -65,6 +66,13 @@ def configure(*, mode: Any = None, min_confidence: Any = None, scope: Any = None
     except (TypeError, ValueError):
         threshold = 0.80
     _configured_min_confidence = min(1.0, max(0.0, threshold))
+    try:
+        allow_floor = float(0.90 if min_allow_probability is None else min_allow_probability)
+    except (TypeError, ValueError):
+        allow_floor = 0.90
+    if not math.isfinite(allow_floor):
+        allow_floor = 0.90
+    _configured_min_allow_probability = min(1.0, max(0.0, allow_floor))
     raw_scope = str(scope if scope is not None else "selective").strip().lower()
     _configured_scope = raw_scope if raw_scope in {"selective", "all"} else "selective"
 
@@ -91,6 +99,35 @@ def minimum_confidence() -> float:
     except ValueError:
         value = 0.80
     return min(1.0, max(0.0, value))
+
+
+def minimum_allow_probability() -> float:
+    if _configured_min_allow_probability is not None:
+        return _configured_min_allow_probability
+    try:
+        value = float(os.getenv("HERMES_NERVE_MIN_ALLOW_PROBABILITY", "0.90"))
+    except ValueError:
+        value = 0.90
+    if not math.isfinite(value):
+        value = 0.90
+    return min(1.0, max(0.0, value))
+
+
+def _probability_of(probabilities: Any, choice: str) -> float | None:
+    """Return a cleaned probability for ``choice``, or None when unavailable.
+
+    Shares the event-telemetry validation rules: non-numeric, non-finite, and
+    out-of-range values are treated as absent rather than trusted.
+    """
+    if not isinstance(probabilities, dict) or choice not in probabilities:
+        return None
+    try:
+        number = float(probabilities[choice])
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(number) or not 0.0 <= number <= 1.0:
+        return None
+    return number
 
 
 def gate_event_path() -> Path:
@@ -313,6 +350,22 @@ def pre_tool_call(tool_name: str, args: dict, task_id: str | None = None, **kwar
             "message": f"Nerve requests human approval ({result.confidence:.3f} confidence).",
             "rule_key": f"nerve:{tool_name}",
         }
+    # ALLOW is the only verdict that continues without a human, so it carries the
+    # strictest gate: the probability of the chosen answer itself, not just its
+    # calibration signal. Labeled replays (keeltrace/hermes-nerve#19) show
+    # dangerous calls that reach an ALLOW verdict cluster at p(ALLOW) 0.72-0.81,
+    # where ``confidence`` does not separate them from benign traffic.
+    p_allow = _probability_of(result.probabilities, "ALLOW")
+    if p_allow is not None:
+        min_allow = minimum_allow_probability()
+        if p_allow < min_allow:
+            return {
+                "action": "approve",
+                "message": f"Nerve p(ALLOW) {p_allow:.3f} is below {min_allow:.3f}; human approval required.",
+                "rule_key": "nerve:low-allow-probability",
+            }
+    # No usable ALLOW probability (provider without a distribution): the
+    # confidence gate above remains the only automatic-allow signal.
     return None
 
 

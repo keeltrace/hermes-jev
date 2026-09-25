@@ -396,6 +396,7 @@ class GateTests(unittest.TestCase):
     def setUp(self):
         gate._configured_mode = None
         gate._configured_min_confidence = None
+        gate._configured_min_allow_probability = None
         gate._configured_scope = None
 
     def test_gate_observations_remain_complete_under_parallel_writes(self):
@@ -565,6 +566,96 @@ class GateTests(unittest.TestCase):
                 gate.evaluate_tool_call = original
             self.assertEqual(decision["action"], "approve")
 
+    def test_enforce_low_allow_probability_goes_to_human_even_when_confident(self):
+        # Labeled-replay shape (keeltrace/hermes-nerve#19): a dangerous call that
+        # reaches an ALLOW verdict with high calibration confidence but a
+        # middling answer probability (held-out chmod 0.81 cluster).
+        with patch.dict(os.environ, {"HERMES_NERVE_GATE_MODE": "enforce"}, clear=False):
+            original = gate.evaluate_tool_call
+            gate.evaluate_tool_call = lambda **kwargs: engine.DecisionResult(
+                "ALLOW", 0.95, {"ALLOW": 0.81, "APPROVAL": 0.1, "BLOCK": 0.09}, "jev-test", 1.0, "x")
+            try:
+                decision = gate.pre_tool_call("terminal", {"command": "chmod 644 ~/.ssh/id_ed25519"}, "t")
+            finally:
+                gate.evaluate_tool_call = original
+            self.assertEqual(decision["action"], "approve")
+            self.assertEqual(decision["rule_key"], "nerve:low-allow-probability")
+
+    def test_enforce_allow_passes_with_high_answer_probability(self):
+        with patch.dict(os.environ, {"HERMES_NERVE_GATE_MODE": "enforce"}, clear=False):
+            original = gate.evaluate_tool_call
+            gate.evaluate_tool_call = lambda **kwargs: engine.DecisionResult(
+                "ALLOW", 0.93, {"ALLOW": 0.93, "APPROVAL": 0.05, "BLOCK": 0.02}, "jev-test", 1.0, "x")
+            try:
+                decision = gate.pre_tool_call("terminal", {"command": "make build"}, "t")
+            finally:
+                gate.evaluate_tool_call = original
+            self.assertIsNone(decision)
+
+    def test_enforce_allow_threshold_is_configurable(self):
+        with patch.dict(os.environ, {
+            "HERMES_NERVE_GATE_MODE": "enforce",
+            "HERMES_NERVE_MIN_ALLOW_PROBABILITY": "0.75",
+        }, clear=False):
+            original = gate.evaluate_tool_call
+            gate.evaluate_tool_call = lambda **kwargs: engine.DecisionResult(
+                "ALLOW", 0.9, {"ALLOW": 0.81, "APPROVAL": 0.1, "BLOCK": 0.09}, "jev-test", 1.0, "x")
+            try:
+                decision = gate.pre_tool_call("terminal", {"command": "make build"}, "t")
+            finally:
+                gate.evaluate_tool_call = original
+            self.assertIsNone(decision)
+
+    def test_min_allow_probability_rejects_non_finite_configuration(self):
+        for raw in ("nan", "inf", "-inf"):
+            gate._configured_min_allow_probability = None
+            with patch.dict(os.environ, {"HERMES_NERVE_MIN_ALLOW_PROBABILITY": raw}, clear=False):
+                self.assertAlmostEqual(gate.minimum_allow_probability(), 0.90)
+
+        for raw in (float("nan"), float("inf"), float("-inf")):
+            gate.configure(mode="enforce", min_confidence=0.80, min_allow_probability=raw, scope="selective")
+            self.assertAlmostEqual(gate.minimum_allow_probability(), 0.90)
+
+    def test_enforce_allow_without_distribution_falls_back_to_confidence(self):
+        # Providers that return no usable distribution keep the shipped
+        # confidence-only semantics rather than failing every allow.
+        cases = [
+            (engine.DecisionResult("ALLOW", 0.95, {}, "jev-test", 1.0, "x"), None),
+            (engine.DecisionResult("ALLOW", 0.51, {}, "jev-test", 1.0, "x"), "approve"),
+            (engine.DecisionResult("ALLOW", 0.95, {"ALLOW": "nan"}, "jev-test", 1.0, "x"), None),
+            (engine.DecisionResult("ALLOW", 0.95, {"ALLOW": 1.4}, "jev-test", 1.0, "x"), None),
+        ]
+        for result, expected in cases:
+            with patch.dict(os.environ, {"HERMES_NERVE_GATE_MODE": "enforce"}, clear=False):
+                original = gate.evaluate_tool_call
+                gate.evaluate_tool_call = lambda **kwargs: result
+                try:
+                    decision = gate.pre_tool_call("terminal", {"command": "make build"}, "t")
+                finally:
+                    gate.evaluate_tool_call = original
+            if expected is None:
+                self.assertIsNone(decision)
+            else:
+                self.assertEqual(decision["action"], expected)
+                self.assertEqual(decision["rule_key"], "nerve:low-confidence")
+
+    def test_enforce_block_and_approval_verdicts_ignore_allow_probability_gate(self):
+        # p(ALLOW) only guards the automatic-allow path; BLOCK still blocks and
+        # APPROVAL still asks regardless of the distribution.
+        cases = [
+            (engine.DecisionResult("BLOCK", 0.95, {"BLOCK": 0.5, "ALLOW": 0.5}, "jev-test", 1.0, "x"), "block"),
+            (engine.DecisionResult("APPROVAL", 0.95, {"APPROVAL": 0.9, "ALLOW": 0.1}, "jev-test", 1.0, "x"), "approve"),
+        ]
+        for result, expected in cases:
+            with patch.dict(os.environ, {"HERMES_NERVE_GATE_MODE": "enforce"}, clear=False):
+                original = gate.evaluate_tool_call
+                gate.evaluate_tool_call = lambda **kwargs: result
+                try:
+                    decision = gate.pre_tool_call("terminal", {"command": "fixture-command"}, "t")
+                finally:
+                    gate.evaluate_tool_call = original
+            self.assertEqual(decision["action"], expected)
+
 
 class RegistrationTests(unittest.TestCase):
     def test_registers_vnext_tools_hooks_context_engine_and_config(self):
@@ -592,6 +683,7 @@ class RegistrationTests(unittest.TestCase):
                     "gate_mode": "advisory",
                     "gate_scope": "selective",
                     "min_confidence": 0.91,
+                    "min_allow_probability": 0.95,
                     "receipt_detail": "sanitized",
                     "context_preview_chars": 900,
                     "context_anchor_chars": 120,
@@ -624,6 +716,7 @@ class RegistrationTests(unittest.TestCase):
         self.assertEqual(module.gate.gate_mode(), "advisory")
         self.assertEqual(module.gate.gate_scope(), "selective")
         self.assertAlmostEqual(module.gate.minimum_confidence(), 0.91)
+        self.assertAlmostEqual(module.gate.minimum_allow_probability(), 0.95)
         self.assertEqual(module.receipts.receipt_detail(), "sanitized")
         self.assertEqual(module.client._configured_model, "typesafe/jev-custom")
         self.assertEqual(module.client._configured_opencode_model, "jev-1.13")
@@ -637,6 +730,35 @@ class RegistrationTests(unittest.TestCase):
         self.assertEqual(ctx.context_engine.name, "jev")
         self.assertAlmostEqual(ctx.context_engine.threshold_percent, 0.68)
         self.assertFalse(ctx.context_engine.fallback_builtin)
+
+    def test_register_uses_min_allow_probability_env_as_config_fallback(self):
+        root = Path(__file__).resolve().parents[1]
+        spec = importlib.util.spec_from_file_location("hermes_nerve_plugin_env", root / "__init__.py", submodule_search_locations=[str(root)])
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+
+        class Ctx:
+            def __init__(self):
+                self.tools = []
+                self.hooks = []
+                self.context_engine = None
+
+            def get_config(self, key, default=None):
+                return default
+
+            def register_tool(self, **kwargs):
+                self.tools.append(kwargs)
+
+            def register_hook(self, name, callback):
+                self.hooks.append((name, callback))
+
+            def register_context_engine(self, engine_obj):
+                self.context_engine = engine_obj
+
+        with patch.dict(os.environ, {"HERMES_NERVE_MIN_ALLOW_PROBABILITY": "0.75"}, clear=False):
+            module.register(Ctx())
+            self.assertAlmostEqual(module.gate.minimum_allow_probability(), 0.75)
 
     def test_fresh_install_context_defaults_are_shadow(self):
         root = Path(__file__).resolve().parents[1]

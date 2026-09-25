@@ -67,6 +67,7 @@ def register(ctx):
     gate.configure(
         mode=ctx.get_config("gate_mode", "off"),
         min_confidence=ctx.get_config("min_confidence", 0.80),
+        min_allow_probability=ctx.get_config("min_allow_probability", os.getenv("HERMES_NERVE_MIN_ALLOW_PROBABILITY", 0.90)),
         scope=ctx.get_config("gate_scope", "selective"),
     )
     receipts.configure(detail=ctx.get_config("receipt_detail", "hash"))

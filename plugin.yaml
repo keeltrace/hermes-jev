@@ -46,6 +46,7 @@ config_schema:
   gate_mode: {type: str, default: "off"}
   gate_scope: {type: str, default: "selective"}
   min_confidence: {type: float, default: 0.80}
+  min_allow_probability: {type: float, default: 0.90, description: "Enforce mode: minimum p(ALLOW) for an ALLOW verdict to continue without a human."}
   receipt_detail: {type: str, default: "hash"}
   nervous_enabled: {type: bool, default: true}
   nervous_turn_admission: {type: bool, default: true}

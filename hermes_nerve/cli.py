@@ -33,22 +33,32 @@ def _doc(profile, overrides=None, advanced=None):
 
 
 def _advanced_catalog():
-    """Return declared advanced config keys/types without requiring PyYAML at runtime."""
+    """Return manifest-declared advanced keys/types; fail loudly on schema drift."""
     manifest = Path(__file__).resolve().parents[1] / "plugin.yaml"
-    catalog = {}
     pattern = re.compile(r"^  ([a-zA-Z0-9_]+): \{type: ([a-z]+), default: (.+?)(?:, description: .*)?\}$")
     try:
         lines = manifest.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return catalog
+    except OSError as exc:
+        raise RuntimeError(f"Cannot read Nerve plugin manifest: {manifest}") from exc
+    catalog = {}
+    in_schema = False
     for line in lines:
+        if line == "config_schema:":
+            in_schema = True
+            continue
+        if in_schema and line and not line.startswith("  "):
+            break
+        if not in_schema or not line.strip():
+            continue
         match = pattern.match(line)
         if not match:
-            continue
+            raise RuntimeError(f"Unsupported config_schema line in plugin.yaml: {line}")
         key, kind, default = match.groups()
         if key in {"nerve_profile", "nerve_modules"}:
             continue
         catalog[key] = {"type": kind, "default": default.strip()}
+    if not catalog:
+        raise RuntimeError("Nerve plugin manifest contains no advanced config_schema entries")
     return catalog
 
 

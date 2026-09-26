@@ -82,3 +82,26 @@ class SetupCliTests(unittest.TestCase):
              patch.object(cli.assistant,"disable") as disable, patch.object(cli.assistant,"install") as install:
             self.assertEqual(cli.main(["setup","--profile","lean"]),0)
         disable.assert_not_called(); install.assert_not_called()
+
+    def test_advanced_catalog_contains_manifest_keys_and_fails_loudly_on_schema_drift(self):
+        catalog=cli._advanced_catalog()
+        self.assertIn("timeout_seconds",catalog)
+        self.assertIn("remote_hosts",catalog)
+        self.assertGreater(len(catalog),50)
+
+    def test_advanced_editor_clear_and_dict_values(self):
+        answers=iter(["yes","clear timeout_seconds","remote_hosts","{'gpu': {'host': '10.0.0.2'}}",""])
+        with patch("builtins.input",side_effect=lambda *a: next(answers)):
+            edited=cli._edit_advanced({"timeout_seconds":17.0})
+        self.assertNotIn("timeout_seconds",edited)
+        self.assertEqual(edited["remote_hosts"],{"gpu":{"host":"10.0.0.2"}})
+
+    def test_advanced_round_trip_persists_without_corruption(self):
+        import tempfile
+        from pathlib import Path
+        from hermes_nerve.profiles import load_profile, save_profile
+        with tempfile.TemporaryDirectory() as td:
+            doc=cli._doc("custom",{"context_governor":True},{"timeout_seconds":17.5,"remote_hosts":{"gpu":{"host":"10.0.0.2"}}})
+            save_profile(doc,home=Path(td))
+            loaded=load_profile(Path(td))
+        self.assertEqual(loaded,doc)

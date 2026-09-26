@@ -8,6 +8,9 @@ license = {text = "MIT"}
 authors = [{name = "KeelTrace community"}]
 dependencies = []
 
+[project.scripts]
+nerve = "hermes_nerve.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/keeltrace/hermes-nerve"
 Issues = "https://github.com/keeltrace/hermes-nerve/issues"

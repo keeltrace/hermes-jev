@@ -130,15 +130,19 @@ def configure(
             "nerve_repeated_failure_kill": max(2, int(nerve_repeated_failure_kill)),
             "nerve_high_context_streak_kill": max(2, int(nerve_high_context_streak_kill)),
         }
-        _supervisor = CardSupervisor(
-            store_path=Path(store_path).expanduser() if str(store_path or "").strip() else None,
-            mode=mode,
-            preview_chars=preview_chars,
-            calibration_min_samples=calibration_min_samples,
-            calibration_max_brier=calibration_max_brier,
-            enforcement_override=enforcement_override,
-            control_confidence=control_confidence,
-        )
+        if _enabled:
+            _supervisor = CardSupervisor(
+                store_path=Path(store_path).expanduser() if str(store_path or "").strip() else None,
+                mode=mode,
+                preview_chars=preview_chars,
+                calibration_min_samples=calibration_min_samples,
+                calibration_max_brier=calibration_max_brier,
+                enforcement_override=enforcement_override,
+                control_confidence=control_confidence,
+            )
+        else:
+            # Hard-OFF means no SQLite path creation or supervision-store initialization.
+            _supervisor = None
 
 
 def enabled() -> bool:
@@ -159,6 +163,8 @@ def settings() -> dict[str, Any]:
 def supervisor() -> CardSupervisor:
     global _supervisor
     with _LOCK:
+        if not _enabled:
+            raise RuntimeError("work supervision is disabled")
         if _supervisor is None:
             _supervisor = CardSupervisor()
         return _supervisor

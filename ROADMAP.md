@@ -32,3 +32,13 @@ External/live follow-up:
 - collect long-session data for the v0.2.1.2 bounded-selection and fail-open context-engine path
 - validate v0.2.2 completed-turn eviction under long-lived Hermes processes
 - compare provider-reported cost coverage across OpenRouter, direct TypeSafe, and OpenCode without treating missing cost as zero
+
+## vNext - profiles, factory-first defaults, and optional modules
+
+Current product/configuration direction:
+
+- `planning/nerve-setup-profiles-factory-audit/IMPLEMENTATION_PLAN.md`
+
+This work adds `nerve setup`, Full Configuration plus Fat Cat/Operator/Lean/Marie Kondo profiles, a full factory-cost audit, hard-OFF module semantics, optional Shared Context integration, and a later rebase of Assistant Accountability behind optional module switches.
+
+The existing vNext nervous-system plan remains historical engineering context and is not replaced by this plan.

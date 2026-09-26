@@ -65,3 +65,53 @@ Call nerve_stats and return the nervous section.
 ```
 
 Local files are profile-scoped under `$HERMES_HOME/jev/`, including nervous-event and decision-outcome JSONL ledgers.
+
+## Personality/module setup
+
+The new profile layer is deliberately separate from existing provider credentials and low-level tuning.
+
+```bash
+nerve setup --show
+nerve setup --profile lean
+nerve setup --profile operator
+nerve setup --profile fat_cat
+nerve setup --profile marie_kondo
+```
+
+Bare `nerve setup` opens the five-choice interactive selector. Full Configuration allows module-by-module selection and then offers an `Advanced configuration? [y/N]` editor. The advanced editor is keyed from the plugin manifest: use `list` to inspect setting names, select a setting to write a typed override, `clear <name>` to remove one, and blank input to save. The sidecar is written atomically under the active Hermes home at:
+
+```text
+$HERMES_HOME/nerve/profile.json
+```
+
+If the sidecar is absent and no `nerve_profile` plugin setting exists, Nerve preserves current v0.2.3/Legacy registration behavior.
+
+The module layer is resolved before plugin registration. A disabled module does not register its owned Hermes tool schemas or hooks. Important initial profile choices are:
+
+- **Fat Cat:** Assistant + context/QoL features; Shared Context ON; remote workers only when hosts are configured.
+- **Operator:** direct interactive Hermes; context/action supervision ON; Kanban/Assistant/remote-worker features OFF by default; Shared Context ON.
+- **Lean:** work supervision + token trajectory + nervous/reflex core; QoL/context/remote/Assistant/Shared Context OFF pending evidence.
+- **Marie Kondo:** Reflex + evidence/DoD/work completion + minimum receipts; most other modules OFF.
+
+### Shared Context
+
+Nerve only manages the external HermesContextBus plugin boundary.
+
+```bash
+nerve setup --explain
+nerve setup --install-shared-context /path/to/HermesContextBus
+```
+
+After installation, run the printed Hermes Plugin Doctor command. Nerve does not integrate or own the WhatsApp bridge.
+
+### Assistant module
+
+When `assistant_loops` is enabled, Nerve reuses the already-declared `nerve_nervous_event` transport for `assistant.status`, `assistant.add_loop`, `assistant.update_loop`, `assistant.complete`, and `assistant.drop_loop`. There is no extra Assistant tool schema, and the model cannot install or disable its own accountability. Operator-only install/disable controls live under `nerve setup`. The `assistant_audit` module adds recurring Reflex accountability advice; turning audit off preserves persistent loops without per-turn audit calls.
+
+### Profile reset and compatibility semantics
+
+`nerve setup --profile <name>` selects a profile and preserves explicit module **and advanced** overrides when that same profile is already selected. `nerve setup --reset <name>` deliberately reapplies that profile's canonical defaults and clears both module and advanced overrides. Profile selection does not persist an Assistant enable/disable override; only `--assistant-install` / `--assistant-disable` own that operator-level state.
+
+Legacy remains a compatibility mode: existing v0.2.3 advanced settings such as an explicit `reflex_backend: shadow` are honored exactly. Named profiles treat shadow execution as an explicit `shadow_testing` module cost and force the normal Reflex backend when that module is off.
+
+Invalid or unsupported profile-sidecar versions are never guessed or auto-migrated. Nerve attempts the `.json.bak`; if neither current-format document validates, it logs a warning and fails open to Legacy while leaving the files intact.

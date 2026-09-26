@@ -6,7 +6,7 @@ import json
 
 from .context import curate_context
 from .engine import DecisionEngine
-from . import gate, ledger, lifecycle, receipts, nervous
+from . import assistant, gate, ledger, lifecycle, receipts, nervous
 from .provenance import execution_provenance, result_provenance
 
 _engine_factory = DecisionEngine
@@ -156,6 +156,38 @@ def nerve_context_rehydrate(args: dict, **kwargs) -> str:
 def nerve_nervous_event(args: dict, **kwargs) -> str:
     try:
         event = dict(args or {})
+        event_type = str(event.get("type") or "").strip().lower()
+        if event_type.startswith("assistant.") and assistant.enabled():
+            state = event.get("state") if isinstance(event.get("state"), dict) else {}
+            if event_type == "assistant.status":
+                result = assistant.status()
+            elif event_type == "assistant.add_loop":
+                result = assistant.add_loop(
+                    title=str(event.get("goal") or state.get("title") or ""),
+                    next_move=str(state.get("next") or ""),
+                    owner=str(state.get("owner") or "agent"),
+                    depends_on=state.get("depends_on"),
+                    trigger=state.get("trigger"),
+                    deadline=str(state.get("deadline") or ""),
+                    definition_of_done=str(state.get("definition_of_done") or ""),
+                )
+            elif event_type == "assistant.update_loop":
+                loop_id = str(state.get("loop_id") or "")
+                changes = {k: state.get(k) for k in ("title","state","next","owner","depends_on","trigger","deadline","definition_of_done") if k in state}
+                result = assistant.update_loop(loop_id, **changes)
+            elif event_type == "assistant.complete":
+                result = assistant.review_completion(str(state.get("loop_id") or ""), event.get("evidence"))
+            elif event_type == "assistant.drop_loop":
+                result = assistant.drop_loop(str(state.get("loop_id") or ""))
+            else:
+                raise ValueError(f"unsupported assistant event type: {event_type}")
+            live = bool(result.get("provider_call")) if isinstance(result, dict) else False
+            return _ok({
+                "contract": "assistant-accountability/v2",
+                "event_type": event_type,
+                "assistant": result,
+                "execution": execution_provenance(live_provider_call=live, transport="nerve-nervous-event"),
+            })
         for key in ("turn_id", "session_id"):
             if not event.get(key) and kwargs.get(key):
                 event[key] = kwargs.get(key)

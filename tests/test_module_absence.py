@@ -87,3 +87,12 @@ class ModuleAbsenceTests(unittest.TestCase):
         self.assertTrue(a.enabled())
         a.disable(); ctx2=Ctx(Path(td.name),{"nerve_profile":"fat_cat","remote_hosts":{}}); mod.register(ctx2)
         self.assertFalse(a.enabled())
+
+    def test_disabled_work_runtime_supervisor_cannot_lazy_wake_store(self):
+        from hermes_nerve.work import runtime
+        with tempfile.TemporaryDirectory() as td:
+            db=Path(td)/"work.db"
+            runtime.configure(enabled=False,store_path=str(db))
+            with self.assertRaisesRegex(RuntimeError,"disabled"):
+                runtime.supervisor()
+            self.assertFalse(db.exists())

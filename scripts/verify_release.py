@@ -50,6 +50,12 @@ def main():
  assert catalog_version()==EXPECTED, (catalog_version(), EXPECTED)
  assert py["project"]["dependencies"]==[],"core plugin must remain dependency-free"
  assert py["project"]["optional-dependencies"]["laya"]==["laya==0.3.3"]
+ from hermes_nerve.cli import _advanced_catalog
+ init_text=(ROOT/"__init__.py").read_text()
+ profile_block=init_text[init_text.index("def _register_profile(ctx):"):init_text.index("\ndef register(ctx):",init_text.index("def _register_profile(ctx):"))]
+ registration_keys=set(re.findall(r'get\("([a-zA-Z0-9_]+)"',profile_block))
+ catalog_keys=set(_advanced_catalog())
+ assert registration_keys<=catalog_keys,("advanced catalog missing profile-registration keys",sorted(registration_keys-catalog_keys))
  for rel in ("hermes_nerve/reflex/laya.py","hermes_nerve/reflex/openjev.py","hermes_nerve/reflex/shadow.py","hermes_nerve/reflex/laya_service.py","tests/test_reflex_laya_dev15b.py","tests/test_reflex_openjev_dev17.py","tests/test_dev15_controller_completion.py","docs/DEV15B_LAYA_INTEGRATION.md","docs/DEV16_INSTALL_AND_RETEST.md","docs/DEV17_OPEN_SOURCE_VALIDATION.md","scripts/install_dev15_profile.sh","scripts/verify_dev15.sh","scripts/install_dev16_profile.sh","scripts/verify_dev16.sh","scripts/install_dev17_profile.sh","scripts/verify_dev17.sh","scripts/check_laya_sidecar.py","scripts/check_openjev_sidecar.py","scripts/configure_reflex_profile.py","scripts/setup_laya_dev17.sh","scripts/setup_openjev_dev17.sh","scripts/run_dev17_model_matrix.py","tests/test_dev17_matrix_qol.py","tests/test_dev16_nerve_budget.py","hermes_nerve/work/nerve.py","docs/DEV16_SESSION_FINDINGS.md","scripts/verify_dev6_benchmark.py","benchmarks/dev6_event_delivery/task-body.md","benchmarks/dev6_event_delivery/fixture/tests/test_delivery.py","benchmarks/dev6_event_delivery/hidden_acceptance.py"):
   assert (ROOT/rel).exists(),rel
  from hermes_nerve.reflex import config as reflex_config

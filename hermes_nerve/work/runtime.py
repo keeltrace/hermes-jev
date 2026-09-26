@@ -163,6 +163,8 @@ def settings() -> dict[str, Any]:
 def supervisor() -> CardSupervisor:
     global _supervisor
     with _LOCK:
+        if not _enabled:
+            raise RuntimeError("work supervision is disabled")
         if _supervisor is None:
             _supervisor = CardSupervisor()
         return _supervisor

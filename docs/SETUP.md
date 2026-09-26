@@ -78,7 +78,7 @@ nerve setup --profile fat_cat
 nerve setup --profile marie_kondo
 ```
 
-Bare `nerve setup` opens the five-choice interactive selector. Full Configuration allows module-by-module selection. The sidecar is written atomically under the active Hermes home at:
+Bare `nerve setup` opens the five-choice interactive selector. Full Configuration allows module-by-module selection and then offers an `Advanced configuration? [y/N]` editor. The advanced editor is keyed from the plugin manifest: use `list` to inspect setting names, select a setting to write a typed override, `clear <name>` to remove one, and blank input to save. The sidecar is written atomically under the active Hermes home at:
 
 ```text
 $HERMES_HOME/nerve/profile.json
@@ -110,7 +110,7 @@ When `assistant_loops` is enabled, Nerve reuses the already-declared `nerve_nerv
 
 ### Profile reset and compatibility semantics
 
-`nerve setup --profile <name>` selects a profile and preserves explicit module overrides when that same profile is already selected. `nerve setup --reset <name>` deliberately reapplies that profile's canonical module defaults and clears its overrides.
+`nerve setup --profile <name>` selects a profile and preserves explicit module **and advanced** overrides when that same profile is already selected. `nerve setup --reset <name>` deliberately reapplies that profile's canonical defaults and clears both module and advanced overrides. Profile selection does not persist an Assistant enable/disable override; only `--assistant-install` / `--assistant-disable` own that operator-level state.
 
 Legacy remains a compatibility mode: existing v0.2.3 advanced settings such as an explicit `reflex_backend: shadow` are honored exactly. Named profiles treat shadow execution as an explicit `shadow_testing` module cost and force the normal Reflex backend when that module is off.
 

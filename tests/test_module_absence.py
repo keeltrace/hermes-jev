@@ -69,3 +69,21 @@ class ModuleAbsenceTests(unittest.TestCase):
         with patch.object(mod.reflex,"configure",wraps=mod.reflex.configure) as conf:
             mod.register(lean)
         self.assertEqual(conf.call_args.kwargs["backend"],"jev")
+
+    def test_operator_work_supervision_off_creates_no_database(self):
+        td=tempfile.TemporaryDirectory(); self.addCleanup(td.cleanup)
+        env=patch.dict(os.environ,{"HERMES_HOME":td.name,"HERMES_KANBAN_TASK":"","HERMES_KANBAN_TASK_ID":""},clear=False); env.start(); self.addCleanup(env.stop)
+        db=Path(td.name)/"work.db"
+        mod=load_plugin(); ctx=Ctx(Path(td.name),{"nerve_profile":"operator","work_supervision_db":str(db)})
+        mod.register(ctx)
+        self.assertFalse(db.exists())
+
+    def test_fat_cat_ignores_old_unmarked_profile_disable_but_respects_operator_disable(self):
+        td=tempfile.TemporaryDirectory(); self.addCleanup(td.cleanup)
+        env=patch.dict(os.environ,{"HERMES_HOME":td.name,"HERMES_KANBAN_TASK":"","HERMES_KANBAN_TASK_ID":""},clear=False); env.start(); self.addCleanup(env.stop)
+        mod=load_plugin(); a=mod.assistant
+        a._write(a._settings_path(),{"schema":1,"enabled":False})
+        ctx=Ctx(Path(td.name),{"nerve_profile":"fat_cat","remote_hosts":{}}); mod.register(ctx)
+        self.assertTrue(a.enabled())
+        a.disable(); ctx2=Ctx(Path(td.name),{"nerve_profile":"fat_cat","remote_hosts":{}}); mod.register(ctx2)
+        self.assertFalse(a.enabled())

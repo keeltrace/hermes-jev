@@ -79,6 +79,8 @@ NERVE FULL CONFIGURATION
 [ON ] Receipts             Keep bounded evidence for supervisory decisions.
 
 Advanced configuration? [y/N]
+
+When enabled, the editor is manifest-driven: `list` shows supported advanced keys, selecting a key prompts for a typed value, `clear <key>` removes an override, and blank input saves.
 ```
 
 Full Configuration must show current resolved state. Advanced exposes thresholds, models, checkpoint fractions, confidence floors, context percentages, backend URLs, and timeouts.

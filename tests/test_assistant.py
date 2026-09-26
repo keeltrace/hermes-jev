@@ -120,3 +120,9 @@ class AssistantAuthorityRegressionTests(unittest.TestCase):
         status=json.loads(tools.nerve_nervous_event({"type":"assistant.status","goal":"status"}))
         self.assertTrue(status["ok"])
         self.assertEqual(status["assistant"]["active_loops"][0]["id"],loop_id)
+
+    def test_legacy_unmarked_disabled_setting_does_not_override_profile(self):
+        assistant.configure(loops_enabled=True,audit_enabled=False)
+        from hermes_nerve.assistant import _settings_path, _write
+        _write(_settings_path(),{"schema":1,"enabled":False})
+        self.assertTrue(assistant.enabled())

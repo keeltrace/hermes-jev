@@ -193,7 +193,7 @@ The first menu is intentionally compact:
 5. Marie Kondo        - Minimum Nerve: only features that clearly earn their cost.
 ```
 
-Profile state is persisted atomically at `$HERMES_HOME/nerve/profile.json`. Advanced Hermes plugin settings continue to use the existing configuration surface. A missing profile sidecar and missing `nerve_profile` setting enter a dedicated v0.2.3 Legacy registration path. The exact 16-tool/9-hook/context-engine/headless behavior is regression-pinned, including the v0.2.3 `nerve_auto_kill` fallback and pre-LLM first-result semantics.
+Profile state is persisted atomically at `$HERMES_HOME/nerve/profile.json`. Full Configuration includes a manifest-driven advanced editor for typed sidecar overrides; re-selecting the same profile preserves those overrides, while `--reset` clears them deliberately. Advanced Hermes plugin settings can still also be supplied through the existing Hermes configuration surface. A missing profile sidecar and missing `nerve_profile` setting enter a dedicated v0.2.3 Legacy registration path. The exact 16-tool/9-hook/context-engine/headless behavior is regression-pinned, including the v0.2.3 `nerve_auto_kill` fallback and pre-LLM first-result semantics.
 
 ### Hard-OFF modules
 
@@ -221,6 +221,6 @@ Shared-context messages are coordination data, never tool authority or user perm
 
 Fat Cat enables optional persistent Assistant loops plus a per-turn accountability audit. Loops carry a next move, owner, dependencies, trigger/deadline, and Definition of Done. Completion is review-gated; generic updates cannot mark a loop done.
 
-Assistant loop content is treated as untrusted coordination data. It cannot create standing permission. The audit is independently switchable so durable loops can be used without recurring provider calls.
+Assistant loop content is treated as untrusted coordination data. It cannot create standing permission. The audit is independently switchable so durable loops can be used without recurring provider calls. Profile selection never writes the persistent Assistant operator override; only the explicit Assistant install/disable CLI actions may do that.
 
 See `planning/nerve-setup-profiles-factory-audit/IMPLEMENTATION_PLAN.md`, `FACTORY_AUDIT.md`, and `PROFILE_EVIDENCE.md` for design and evidence.

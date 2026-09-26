@@ -51,3 +51,34 @@ class SetupCliTests(unittest.TestCase):
              patch.object(cli.shared_context,"reconcile_enabled",return_value={"changed":True}), patch.object(cli.assistant,"disable",return_value={}):
             self.assertEqual(cli.main(["setup","--reset","lean"]),0)
         self.assertEqual(save.call_args.args[0]["nerve_modules"],{})
+
+    def test_same_profile_preserves_advanced_settings(self):
+        existing={"version":1,"nerve_profile":"lean","nerve_modules":{"context_governor":True},"advanced":{"gate_mode":"precommit","timeout_seconds":17.0}}
+        fake_path=type("P",(),{"__str__":lambda self:"/tmp/profile.json"})()
+        with patch.object(cli,"load_profile",return_value=existing), patch.object(cli,"save_profile",return_value=fake_path) as save, \
+             patch.object(cli.shared_context,"reconcile_enabled",return_value={"changed":True}):
+            self.assertEqual(cli.main(["setup","--profile","lean"]),0)
+        self.assertEqual(save.call_args.args[0]["advanced"],existing["advanced"])
+
+    def test_reset_clears_advanced_settings(self):
+        existing={"version":1,"nerve_profile":"lean","nerve_modules":{},"advanced":{"timeout_seconds":17.0}}
+        fake_path=type("P",(),{"__str__":lambda self:"/tmp/profile.json"})()
+        with patch.object(cli,"load_profile",return_value=existing), patch.object(cli,"save_profile",return_value=fake_path) as save, \
+             patch.object(cli.shared_context,"reconcile_enabled",return_value={"changed":True}):
+            self.assertEqual(cli.main(["setup","--reset","lean"]),0)
+        self.assertEqual(save.call_args.args[0]["advanced"],{})
+
+    def test_advanced_editor_can_set_typed_values(self):
+        answers=iter(["yes","timeout_seconds","17.5","nervous_max_provider_calls_per_turn","12",""])
+        with patch("builtins.input",side_effect=lambda *a: next(answers)):
+            edited=cli._edit_advanced({})
+        self.assertEqual(edited["timeout_seconds"],17.5)
+        self.assertEqual(edited["nervous_max_provider_calls_per_turn"],12)
+
+    def test_profile_selection_does_not_persist_assistant_override(self):
+        fake_path=type("P",(),{"__str__":lambda self:"/tmp/profile.json"})()
+        with patch.object(cli,"load_profile",return_value=None), patch.object(cli,"save_profile",return_value=fake_path), \
+             patch.object(cli.shared_context,"reconcile_enabled",return_value={"changed":True}), \
+             patch.object(cli.assistant,"disable") as disable, patch.object(cli.assistant,"install") as install:
+            self.assertEqual(cli.main(["setup","--profile","lean"]),0)
+        disable.assert_not_called(); install.assert_not_called()

@@ -108,7 +108,7 @@ def _write(path:Path,value:Any)->None:
 def install()->dict[str,Any]:
     with _lock("settings"):
         settings=_read(_settings_path(),{"schema":_SCHEMA})
-        settings.update({"schema":_SCHEMA,"enabled":True,"updated_at":_now(),"installed_at":settings.get("installed_at") or _now()})
+        settings.update({"schema":_SCHEMA,"enabled":True,"operator_override":"enabled","updated_at":_now(),"installed_at":settings.get("installed_at") or _now()})
         _write(_settings_path(),settings)
     with _lock("board"):
         if not _board_path().exists():_write(_board_path(),{"schema":_SCHEMA,"revision":0,"loops":[]})
@@ -118,7 +118,7 @@ def install()->dict[str,Any]:
 def disable()->dict[str,Any]:
     with _lock("settings"):
         settings=_read(_settings_path(),{"schema":_SCHEMA})
-        settings.update({"schema":_SCHEMA,"enabled":False,"updated_at":_now()})
+        settings.update({"schema":_SCHEMA,"enabled":False,"operator_override":"disabled","updated_at":_now()})
         _write(_settings_path(),settings)
     return status()
 
@@ -126,7 +126,11 @@ def disable()->dict[str,Any]:
 def enabled()->bool:
     if not _loops_enabled:return False
     settings=_read(_settings_path(),{})
-    if "enabled" in settings:return bool(settings["enabled"])
+    override=str(settings.get("operator_override") or "").strip().lower()
+    if override=="disabled":return False
+    if override=="enabled":return True
+    # Pre-profile beta settings may contain enabled:false from a profile transition.
+    # Without an explicit operator_override marker, profile policy remains authoritative.
     return True
 
 

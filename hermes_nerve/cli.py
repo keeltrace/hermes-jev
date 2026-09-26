@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import ast
+import re
 import sys
+from pathlib import Path
 
 from . import assistant
 from .config_resolver import resolve_config
@@ -20,8 +23,79 @@ _DESC = {
 }
 
 
-def _doc(profile, overrides=None):
-    return {"version": 1, "nerve_profile": profile, "nerve_modules": dict(overrides or {}), "advanced": {}}
+def _doc(profile, overrides=None, advanced=None):
+    return {
+        "version": 1,
+        "nerve_profile": profile,
+        "nerve_modules": dict(overrides or {}),
+        "advanced": dict(advanced or {}),
+    }
+
+
+def _advanced_catalog():
+    """Return declared advanced config keys/types without requiring PyYAML at runtime."""
+    manifest = Path(__file__).resolve().parents[1] / "plugin.yaml"
+    catalog = {}
+    pattern = re.compile(r"^  ([a-zA-Z0-9_]+): \{type: ([a-z]+), default: (.+?)(?:, description: .*)?\}$")
+    try:
+        lines = manifest.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return catalog
+    for line in lines:
+        match = pattern.match(line)
+        if not match:
+            continue
+        key, kind, default = match.groups()
+        if key in {"nerve_profile", "nerve_modules"}:
+            continue
+        catalog[key] = {"type": kind, "default": default.strip()}
+    return catalog
+
+
+def _parse_advanced_value(kind, raw):
+    text = str(raw).strip()
+    if kind == "bool":
+        lowered = text.lower()
+        if lowered in {"1", "true", "yes", "on", "y"}: return True
+        if lowered in {"0", "false", "no", "off", "n"}: return False
+        raise ValueError("expected boolean")
+    if kind == "int": return int(text)
+    if kind == "float": return float(text)
+    if kind == "dict":
+        value = ast.literal_eval(text)
+        if not isinstance(value, dict): raise ValueError("expected dict")
+        return value
+    return text
+
+
+def _edit_advanced(existing=None):
+    advanced = dict(existing or {})
+    catalog = _advanced_catalog()
+    if input("Advanced configuration? [y/N]: ").strip().lower() not in {"y", "yes"}:
+        return advanced
+    print("Enter an advanced setting name to edit. Blank saves and exits.")
+    print("Use 'list' to show available setting names; use 'clear <name>' to remove an override.")
+    while True:
+        raw = input("advanced> ").strip()
+        if not raw:
+            return advanced
+        if raw == "list":
+            print("\n".join(sorted(catalog)))
+            continue
+        if raw.startswith("clear "):
+            advanced.pop(raw[6:].strip(), None)
+            continue
+        if raw not in catalog:
+            print(f"Unknown setting: {raw}", file=sys.stderr)
+            continue
+        current = advanced.get(raw, catalog[raw]["default"])
+        value = input(f"{raw} [{current}]: ").strip()
+        if not value:
+            continue
+        try:
+            advanced[raw] = _parse_advanced_value(catalog[raw]["type"], value)
+        except (ValueError, SyntaxError) as exc:
+            print(f"Invalid value for {raw}: {exc}", file=sys.stderr)
 
 
 def _current():
@@ -34,21 +108,20 @@ def _show(r):
         print(f"[{'ON ' if r.enabled(mid) else 'OFF'}] {spec.name:<18} {spec.description}")
 
 
-def _save(profile, overrides=None, *, reset=False):
-    if overrides is None and not reset:
-        current = load_profile()
-        if current and current.get("nerve_profile") == profile:
-            overrides = dict(current.get("nerve_modules") or {})
-    doc = _doc(profile, overrides)
+def _save(profile, overrides=None, *, reset=False, advanced=None):
+    current = load_profile()
+    if overrides is None and not reset and current and current.get("nerve_profile") == profile:
+        overrides = dict(current.get("nerve_modules") or {})
+    if advanced is None and not reset and current and current.get("nerve_profile") == profile:
+        advanced = dict(current.get("advanced") or {})
+    doc = _doc(profile, overrides, advanced)
     path = save_profile(doc)
     resolved = resolve_config(profile=doc)
     shared = shared_context.reconcile_enabled(resolved.enabled("shared_context"))
     if shared.get("warning"):
         print("Shared Context: " + shared["warning"], file=sys.stderr)
-    if resolved.enabled("assistant_loops"):
-        assistant.install()
-    else:
-        assistant.disable()
+    # Profile state and explicit operator Assistant disable are separate authorities.
+    # Only --assistant-install/--assistant-disable may persist that operator override.
     return path
 
 
@@ -70,7 +143,10 @@ def _interactive():
                 modules[mid] = True
             elif val in {"n", "no", "off", "0"}:
                 modules[mid] = False
-        path = _save("custom", modules)
+        existing = load_profile()
+        current_advanced = dict(existing.get("advanced") or {}) if existing else {}
+        advanced = _edit_advanced(current_advanced)
+        path = _save("custom", modules, advanced=advanced)
         print(f"Saved {path}")
         return 0
     if raw not in {"2", "3", "4", "5"}:
